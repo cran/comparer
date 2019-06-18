@@ -37,7 +37,7 @@ test_that("mbc basic runs", {
   expect_error(m1 <- mbc(mean(x), median(x), inputi={x=rnorm(100)}, times=2, target=.5), regexp = NA)
   expect_error(m1 <- mbc(mean(x), median(x), inputi={x=rnorm(100)}, times=20), regexp = NA)
   expect_error(m1 <- mbc(mean(x), median(x), inputi={x=rnorm(100)}, times=20, target=.5), regexp = NA)
-  expect_error(print(m1), NA)
+  expect_true(length(capture.output(print(m1)))>1)
 
   # Check inputi as unnamed data
   expect_error(mbc(mean, inputi=rnorm(10)), NA)
@@ -52,28 +52,32 @@ test_that("mbc basic runs", {
   expect_error(mbc(12, evaluator=function() mean(.)), NA)
 
   expect_error(mbc(identity, function(x) x, inputi=12, times=3, post=12), NA)
-  expect_error(mbc(mean, median, input=rnorm(100), times=7, target=0), NA)
-  expect_error(mbc(mean, median, inputi=0:10, times=7, target=0), NA)
+  # This doesn't work anymore, need to put (x)
+  expect_error(mbc(mean, median, input=rnorm(100), times=7, target=0))
+  expect_error(mbc(mean(x), median(x), input=rnorm(100), times=7, target=0), NA)
+  expect_error(mbc(mean(x), median(x), inputi=0:10, times=7, target=0), NA)
 
   # Test duplicate names
   expect_error(mbc(mean,mean,input=rnorm(3), times=2), NA)
   expect_error(mbc(mean,mean,mean,input=rnorm(3), times=2), NA)
   expect_error(mbc(m=mean,m=mean, m2=mean,input=rnorm(3), times=2), NA)
 })
+
 test_that("test mbc print", {
   # Basic with compare
   m1 <- mbc(mean, median, inputi=function(i)rnorm(100))
-  expect_error(print(m1), regexp = NA)
+  # expect_error(print(m1), regexp = NA)
+  expect_true(length(capture.output(print(m1)))>1)
 })
 
 test_that("test mbc metrics", {
 
-  expect_error(m1 <- mbc(mean, median, inputi=function(i)rnorm(10)), NA)
+  expect_error(m1 <- mbc(mean(x), median(x), inputi=function(i)rnorm(10)), NA)
 
-  expect_error(m1 <- mbc(mean, median, inputi=function(i)rnorm(10), target=10), NA)
+  expect_error(m1 <- mbc(mean(x), median(x), inputi=function(i)rnorm(10), target=10), NA)
   # Give function for target
-  expect_error(m1 <- mbc(mean, median, inputi=function(i)rnorm(10), target=function(i){i}), NA)
-  expect_error(m1 <- mbc(mean, median, inputi=function(i)rnorm(10), target=list(1,2,3,4,5)), NA)
+  expect_error(m1 <- mbc(mean(x), median(x), inputi=function(i)rnorm(10), target=function(i){i}), NA)
+  expect_error(m1 <- mbc(mean(x), median(x), inputi=function(i)rnorm(10), target=list(1,2,3,4,5)), NA)
 
   # Test t and mis90 using lm
   x1 <- runif(10)
@@ -83,7 +87,7 @@ test_that("test mbc metrics", {
   ydf <- with(xdf, x1 * 1.2 + x2 * .43 - .76 + rnorm(10,0,.1))
   # Just run, no compare of output
   expect_error(m1 <- mbc(lm(y1 ~ x1), lm(y1 ~ x1 + x2)), NA)
-  expect_error(print(m1), NA)
+  expect_true(length(capture.output(print(m1)))>1)
   # Test target in
   expect_error(mbc(lm(y1 ~ x1), lm(y1 ~ x1 + x2), targetin = xdf, target=ydf), NA)
   # mbc(lm(y1 ~ x1), lm(y1 ~ x1 + x2), targetin = cbind(xdf, ydf), target="ydf")
@@ -91,7 +95,7 @@ test_that("test mbc metrics", {
   # Test t
   m1 <- mbc(lm(y1 ~ x1), lm(y1 ~ x1 + x2), target=ydf, metric="t", post=function(mod){predict(mod, xdf,se=T)})
   expect_true("Mean t" %in% m1$Output_disp$Stat)
-  expect_error(print(m1), NA)
+  expect_true(length(capture.output(print(m1)))>1)
 
   # Test mis90
   m1 <- mbc(lm(y1 ~ x1), lm(y1 ~ x1 + x2), target=ydf, metric="mis90", post=function(mod){predict(mod, xdf,se=T)})
@@ -106,8 +110,8 @@ test_that("test mbc metrics", {
   m1 <- mbc(lm(y1 ~ x1), lm(y1 ~ x1 + x2), target=ydf, metric=c("t","mis90"), post=function(mod){predict(mod, xdf,se=T)})
   expect_true(("mis90" %in% m1$Output_disp$Stat) && "Mean t" %in% m1$Output_disp$Stat)
 
-  m1 <- mbc(lm(y1 ~ x1), lm(y1 ~ x1 + x2), target=ydf, metric=c("rmse","mis90"), post=function(mod){predict(mod, xdf,se=T)})
-  expect_true(("mis90" %in% m1$Output_disp$Stat) && "rmse" %in% m1$Output_disp$Stat)
+  m1 <- mbc(lm(y1 ~ x1), lm(y1 ~ x1 + x2), target=ydf, metric=c("rmse","mis90","sr27"), post=function(mod){predict(mod, xdf,se=T)})
+  expect_true(("mis90" %in% m1$Output_disp$Stat) && "rmse" %in% m1$Output_disp$Stat && "sr27" %in% m1$Output_disp$Stat)
 
 })
 

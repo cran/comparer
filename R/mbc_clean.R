@@ -36,31 +36,31 @@
 #'     inputi={x=rexp(1e2)})
 #'
 #' # input given, no post
-#' mbc(function(x) {Sys.sleep(rexp(1, 30));mean(x)},
-#'     function(x) {Sys.sleep(rexp(1, 5));median(x)},
+#' mbc({Sys.sleep(rexp(1, 30));mean(x)},
+#'      {Sys.sleep(rexp(1, 5));median(x)},
 #'     inputi={x=runif(100)})
 #'
 #' # input given with post
-#' mbc(function(x) {Sys.sleep(rexp(1, 30));mean(x)},
-#'     function(x) {Sys.sleep(rexp(1, 5));median(x)},
+#' mbc(mean={Sys.sleep(rexp(1, 30));mean(x)},
+#'     med={Sys.sleep(rexp(1, 5));median(x)},
 #'     inputi={x=runif(100)},
-#'     post=function(x){c(x+1, 12)})
+#'     post=function(x){c(x+1, x^2)})
 #'
 #' # input given with post, 30 times
-#' mbc(function(x) {Sys.sleep(rexp(1, 30));mean(x)+runif(1)},
-#'     function(x) {Sys.sleep(rexp(1, 50));median(x)+runif(1)},
-#'     inputi={runif(100)},
-#'     post=function(x){c(x+1, 12)}, times=10)
+#' mbc(mean={Sys.sleep(rexp(1, 30));mean(x)+runif(1)},
+#'     med={Sys.sleep(rexp(1, 50));median(x)+runif(1)},
+#'     inputi={x=runif(100)},
+#'     post=function(x){c(x+1, x^2)}, times=10)
 #'
 #' # Name one function and post
-#' mbc(function(x) {mean(x)+runif(1)},
-#'     a1=function(x) {median(x)+runif(1)},
+#' mbc({mean(x)+runif(1)},
+#'     a1={median(x)+runif(1)},
 #'     inputi={x=runif(100)},
-#'     post=function(x){c(rr=x+1, gg=12)}, times=10)
+#'     post=function(x){c(rr=x+1, gg=x^2)}, times=10)
 #'
 #' # No input
-#' m1 <- mbc(function() {x <- runif(100);Sys.sleep(rexp(1, 30));mean(x)},
-#'           function() {x <- runif(100);Sys.sleep(rexp(1, 50));median(x)})
+#' m1 <- mbc(mean={x <- runif(100);Sys.sleep(rexp(1, 30));mean(x)},
+#'           med={x <- runif(100);Sys.sleep(rexp(1, 50));median(x)})
 mbc <- function(..., times=5, input, inputi, evaluator, post, target, targetin,
                 metric="rmse", paired, kfold) {
   if (!missing(input) && !missing(inputi)) {
@@ -138,7 +138,8 @@ mbc <- function(..., times=5, input, inputi, evaluator, post, target, targetin,
         # If it was single value instead of setting variable, e.g. "rnorm(10)"
         #   instead of "x <- rnorm(10)", then store that
         if (length(ls(input)) == 0) { # Store the output in input
-          input$inputi_expr_out <- inputi_expr_out
+          # input$inputi_expr_out <- inputi_expr_out
+          input$x <- inputi_expr_out
         }
       } else if (is.function(inputi)) { # Next see if it is a function
         input <- inputi(j)
@@ -149,7 +150,8 @@ mbc <- function(..., times=5, input, inputi, evaluator, post, target, targetin,
         input <- new.env(parent = parent.frame())
         inputi_expr_out <- eval(inputi_expr, input)
         if (length(ls(input)) == 0) { # Store the output in input
-          input$inputi_expr_out <- inputi_expr_out
+          # input$inputi_expr_out <- inputi_expr_out
+          input$x <- inputi_expr_out
         }
       }
     } else { # inputi not given, so not paired
@@ -166,101 +168,34 @@ mbc <- function(..., times=5, input, inputi, evaluator, post, target, targetin,
 
       # See if there is input to each
       if (!missing(input)) { # Single input for all
-        if (missing(evaluator)) { # Run as normal if no evaluator given
-          runtime <- system.time(
-            # out <- dots[[i]](input) # Old version, required functions
-            out <- eval(dots[[i]], envir=input),
-            gcFirst = gcFirst
-          )
-          if (is.function(out)) {#print("Trying second time")
-            if (is.environment(input)) { # Try to run as function
-              input <- as.list(input)
-            }
-            if ("inputi_expr_out" %in% names(input) && length(list) == 1) {
-              runtime <- system.time(
-                out <- out(input$inputi_expr_out),
-                gcFirst = gcFirst
-              )
-            } else {
-              runtime <- system.time(
-                # out <- out(input)
-                out <- do.call(out, input),
-                gcFirst = gcFirst
-              )
-            }
-          }
-        } else { # evaluator is given, call it on each dots as argument
-          expr_evaluator <- match.call(expand.dots = FALSE)$`evaluator`
-          input$. <- eval(dots[[i]], envir=input)
-          runtime <- system.time(
-            # out <- dots[[i]](input) # Old version, required functions
-            out <- eval(expr_evaluator, envir=input),
-            gcFirst = gcFirst
-          )
-          if (is.function(out)) {#print("Trying second time")
-            runtime <- system.time(
-              # out <- out(input)
-              out <- do.call(out, input),
-              gcFirst = gcFirst
-            )
-          }
-        }
-      # } else if (!missing(inputi)) { # Different input for each rep
-      #   runtime <- system.time(
-      #     out <- dots[[i]](inputi(j)),
-      #     gcFirst = gcFirst
-      #   )
+        inputenv <- input
       } else { # No input at all
-        # runtime <- system.time(
-        #   out <- dots[[i]](),
-        #   gcFirst = gcFirst
-        # )
         if (missing(evaluator)) {
           inputenv <- new.env(parent = parent.frame()) # Only ki and parent.frame
-          if (!missing(kfold)) { # If kfold, set ki
-            # inputenv$ki <- ki_all[(1:kfoldN %% folds) != (j-1)%%folds]
-            inputenv$ki <- ki
-          }
-          runtime <- system.time(
-            # out <- dots[[i]](input) # Old version, required functions
-            out <- eval(dots[[i]], envir=inputenv),
-            gcFirst = gcFirst
-          )
-          if (is.function(out)) {#print("Trying second time 2")
-            runtime <- system.time(
-              # out <- out(input)
-              out <- out(), #do.call(out, input)
-              gcFirst = gcFirst
-            )
-          }
         } else { # Use evaluator, dots are input to evaluator to be evaluated
           # This time there is no input, so create it
           inputenv <- new.env()
-          if (!missing(kfold)) { # If kfold, set ki
-            # inputenv$ki <- ki_all[(1:kfoldN %% folds) != (j-1)%%folds]
-            inputenv$ki <- ki
-          }
-          expr_evaluator <- match.call(expand.dots = FALSE)$`evaluator`
-          inputenv$. <- eval(dots[[i]]) #, envir=input)
-          runtime <- system.time(
-            # out <- dots[[i]](input) # Old version, required functions
-            out <- eval(expr_evaluator, envir=inputenv),
-            gcFirst = gcFirst
-          )
-          if (is.function(out)) {#print("Trying second time")
-            # if (is.environment(input)) {input <- as.list(input)}
-            runtime <- system.time(
-              # out <- out(input)
-              # out <- do.call(out, input)
-              out <- eval(quote(out()), inputenv),
-              gcFirst = gcFirst
-            )
-          }
+        }
+        if (!missing(kfold)) { # If kfold, set ki
+          inputenv$ki <- ki
         }
       }
 
+      # Run it here
+      if (gcFirst) {gc(F)}
+      start_time <- Sys.time()
+      if (missing(evaluator)) {
+        out <- eval(dots[[i]], envir=inputenv)
+      } else {
+        expr_evaluator <- match.call(expand.dots = FALSE)$`evaluator`
+        inputenv$. <- eval(dots[[i]])
+        out <- eval(expr_evaluator, envir=inputenv)
+      }
+      end_time <- Sys.time()
+      runtime <- as.numeric(end_time - start_time, units="secs")
+
       # Save runtime and out
-      runtimes[i, j] <- runtime['elapsed']
+      runtimes[i, j] <- runtime #['elapsed']
       outs[[i]][[j]] <- out
 
       # Run post-processing if post or target given
@@ -315,26 +250,27 @@ mbc <- function(..., times=5, input, inputi, evaluator, post, target, targetin,
         if (!missing(target)) {
           po.metric <- c()
           if ("rmse" %in% metric) {
+            if (is.function(po)) {stop("Can't calculate rmse for function output")}
             targetj <- if (is.function(target)) {target(j)}
-                       else if (is.list(target)) {target[[j]]}
-                       else if (is.character(target) && !is.character(po) && (target%in%names(targetinj))) {targetinj[[target]]}
-                       else if (is.character(target) && !is.character(po)) {input[[target]]}
-                       else {target}
+            else if (is.list(target)) {target[[j]]}
+            else if (is.character(target) && !is.character(po) && (target%in%names(targetinj))) {targetinj[[target]]}
+            else if (is.character(target) && !is.character(po)) {input[[target]]}
+            else {target}
             po.mean <- if ("fit" %in% names(po)) po$fit else if ("mean" %in% names(po)) po$mean else {po}
             po.metric <- c(po.metric, rmse=sqrt(mean((po.mean - targetj)^2)))
           }
           if ("t" %in% metric) {
-              targetj <- if (is.function(target)) {target(j)}
-              else if (is.list(target)) {target[[j]]}
-              else if (is.character(target) && !is.character(po) && (target%in%names(targetinj))) {targetinj[[target]]}
-              else if (is.character(target) && !is.character(po)) {input[[target]]}
-              else {target}
-              po.mean <- if ("fit" %in% names(po)) po$fit else if ("mean" %in% names(po)) po$mean else {stop("Can't get fit/mean from post/out")}
-              po.se <- po$se
-              po.t <- (po.mean - targetj) / po.se
-              po.tsum <- summary(po.t) #c(mean=mean(po.t)) # rmse=sqrt(mean((po - targetj)^2)))
-              names(po.tsum) <- paste0("", names(po.tsum), " t")
-              po.metric <- c(po.metric, po.tsum)
+            targetj <- if (is.function(target)) {target(j)}
+            else if (is.list(target)) {target[[j]]}
+            else if (is.character(target) && !is.character(po) && (target%in%names(targetinj))) {targetinj[[target]]}
+            else if (is.character(target) && !is.character(po)) {input[[target]]}
+            else {target}
+            po.mean <- if ("fit" %in% names(po)) po$fit else if ("mean" %in% names(po)) po$mean else {stop("Can't get fit/mean from post/out")}
+            po.se <- po$se
+            po.t <- (po.mean - targetj) / po.se
+            po.tsum <- summary(po.t) #c(mean=mean(po.t)) # rmse=sqrt(mean((po - targetj)^2)))
+            names(po.tsum) <- paste0("", names(po.tsum), " t")
+            po.metric <- c(po.metric, po.tsum)
           }
           if ("mis90" %in% metric) {
             targetj <- if (is.function(target)) {target(j)}
@@ -486,8 +422,8 @@ mbc <- function(..., times=5, input, inputi, evaluator, post, target, targetin,
           out_list$Compare <- comp_df
         }
 
-      # } else { # If not paired/ordered, then sort them
-      #   post_df_disp <- plyr::adply(postout, c(1,3), function(x) {sx <- sort(x); c(Sort=(sx), mean=mean(x), sd=sd(x))}, .id = c('Func','Stat'))
+        # } else { # If not paired/ordered, then sort them
+        #   post_df_disp <- plyr::adply(postout, c(1,3), function(x) {sx <- sort(x); c(Sort=(sx), mean=mean(x), sd=sd(x))}, .id = c('Func','Stat'))
       }
     }
     out_list$RawOutput <- outs
@@ -503,10 +439,10 @@ mbc <- function(..., times=5, input, inputi, evaluator, post, target, targetin,
       postout <- array(data = NA, dim = c(n, times, len))
       dimnames(postout)[[1]] <- fnames
       # if (class(outs[[1]][[1]]) %in% c("numeric", "character", "logical")) {
-        for (i in 1:n) {
-          for (j in 1:times) {
-            postout[i, j, ] <- outs[[i]][[j]]
-          }
+      for (i in 1:n) {
+        for (j in 1:times) {
+          postout[i, j, ] <- outs[[i]][[j]]
+        }
         # }
       }
       # Post-process
@@ -554,8 +490,9 @@ mbc <- function(..., times=5, input, inputi, evaluator, post, target, targetin,
 #' @export
 #'
 #' @examples
-#' m1 <- mbc(function(x) {Sys.sleep(rexp(1, 30));mean(x)},
-#'   function(x) {Sys.sleep(rexp(1, 5));median(x)}, input=runif(100))
+#' m1 <- mbc(mn= {Sys.sleep(rexp(1, 30));mean(x)},
+#'           med={Sys.sleep(rexp(1, 5));median(x)},
+#'           input=runif(100))
 #' plot(m1)
 plot.mbc <- function(x, ...) {
   # stripchart(x$Run_times)
@@ -574,8 +511,9 @@ plot.mbc <- function(x, ...) {
 #' @export
 #'
 #' @examples
-#' m1 <- mbc(function(x) {Sys.sleep(rexp(1, 30));mean(x)},
-#'   function(x) {Sys.sleep(rexp(1, 5));median(x)}, input=runif(100))
+#' m1 <- mbc({Sys.sleep(rexp(1, 30));mean(x)},
+#'           {Sys.sleep(rexp(1, 5));median(x)},
+#'           input=runif(100))
 #' print(m1)
 print.mbc <- function(x, ...) {
   nam <- names(x)
@@ -591,11 +529,11 @@ print.mbc <- function(x, ...) {
     } else {
       print(x$Output_disp)
     }
-  # } else if ('Output' %in% nam) {
-  #   if (is.data.frame(x$Output) || is.numeric(x$Output)) { # Only print df, not list
-  #     cat("\nOutput \n")
-  #     print(x$Output)
-  #   }
+    # } else if ('Output' %in% nam) {
+    #   if (is.data.frame(x$Output) || is.numeric(x$Output)) { # Only print df, not list
+    #     cat("\nOutput \n")
+    #     print(x$Output)
+    #   }
   }
   if ("Compare" %in% nam) {
     cat("\nCompare\n")

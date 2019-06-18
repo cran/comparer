@@ -1,3 +1,9 @@
+# comparer 0.2.0
+
+* Revamped `mbc` for more accurate timing.
+
+* Added `ffexp` for running full factorial experiments.
+
 # comparer 0.1.1
 
 * Fixing so `microbenchmark` is only used conditionally as requested by CRAN, only occurs once in vignette.
