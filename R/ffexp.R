@@ -120,7 +120,11 @@ ffexp <- R6::R6Class(
     #' @param save_output Should output be saved to file?
     #' @param parallel Should a parallel cluster be used?
     #' @param parallel_cores When running in parallel, how many cores should
-    #' be used.
+    #' be used. Not actually the number of cores used, actually the number
+    #' of clusters created. Can be more than the computer has available,
+    #' but will hurt performance. Can set to 'detect' to have it detect
+    #' how many cores are available and use that, or 'detect-1' to use
+    #' one fewer than there are.
     #' @param folder_path Where the data and files should be stored.
     #' If not given, a folder in the existing directory will be created.
     #' @param varlist Character vector of names of objects that need to be
@@ -138,6 +142,15 @@ ffexp <- R6::R6Class(
       else {folder_path}
       self$varlist <- varlist
       self$arglist <- list(...)
+      # # Getting an error with df with ncol==1, so just avoid that
+      # for (i in 1:length(self$arglist)) {
+      #   if ("data.frame" %in% class(self$arglist[[i]]) && ncol(self$arglist[[i]])==1) {
+      #     # browser()
+      #     tmpname <- colnames(self$arglist[[i]]); stopifnot(length(tmpname) == 1);
+      #     self$arglist[[i]] <- self$arglist[[i]][,1]
+      #     names(self$arglist)[[i]] <- tmpname
+      #   }
+      # }
       self$nvars <- sapply(self$arglist,
                            function(i) {
                              if (is.data.frame(i)) {
@@ -153,7 +166,7 @@ ffexp <- R6::R6Class(
                               lapply(1:length(self$arglist),
                                      function(j) {
                                        i <- self$arglist[[j]]
-                                       if (is.data.frame(i)) {
+                                       if (is.data.frame(i)) {#browser()
                                          data.frame(name =colnames(i),
                                                     class=unlist(lapply(i, class)),
                                                     num  =nrow(i))
@@ -181,20 +194,14 @@ ffexp <- R6::R6Class(
 
       self$number_runs <- nrow(self$rungrid)
       self$completed_runs <- rep(FALSE, self$number_runs)
+      self$outlist <- rep(list(NULL), self$number_runs)
       self$parallel <- parallel
-      self$parallel_cores <- parallel_cores
-      if (self$parallel) {
+      # self$parallel_cores <- parallel_cores
+      if (self$parallel || !self$parallel) {
+        # Set this even if not using parallel in case they try to run
+        #  run_all with parallel=T.
         # For now assume using parallel package
-        if (parallel_cores == "detect") {
-          self$parallel_cores <- parallel::detectCores()
-        } else if (parallel_cores == "detect-1") {
-          self$parallel_cores <- parallel::detectCores() - 1
-          if (self$parallel_cores == 0) {
-            "Only 1 core detected, can't do 'detect-1'"
-          }
-        } else {
-          self$parallel_cores <- parallel_cores
-        }
+        self$set_parallel_cores(parallel_cores)
       }
       self$verbose <- verbose
     },
@@ -203,11 +210,19 @@ ffexp <- R6::R6Class(
     #' be run in parallel, and what files should be saved.
     #' @param to_run Which rows should be run? If NULL, then all that haven't
     #' been run yet.
+    #' @param random_n Randomly selects n trials among those not yet completed
+    #' and runs them.
     #' @param redo Should already completed rows be run again?
     #' @param run_order In what order should the rows by run?
     #' Options: random, in_order, and reverse.
     #' @param save_output Should the output be saved?
     #' @param parallel Should it be run in parallel?
+    #' @param parallel_cores When running in parallel, how many cores should
+    #' be used. Not actually the number of cores used, actually the number
+    #' of clusters created. Can be more than the computer has available,
+    #' but will hurt performance. Can set to 'detect' to have it detect
+    #' how many cores are available and use that, or 'detect-1' to use
+    #' one fewer than there are.
     #' @param parallel_temp_save Should temp files be written when running
     #' in parallel? Prevents losing results if it crashes partway through.
     #' @param write_start_files Should start files be written?
@@ -219,18 +234,22 @@ ffexp <- R6::R6Class(
     #' the the parallel cluster.
     #' @param verbose How much should be printed when running. 0 is none,
     #' 2 is average.
+    #' @param outfile Where should master output file be saved when running
+    #' in parallel?
     #' @param warn_repeat Should warnings be given when repeating already
     #' completed rows?
-    run_all = function(to_run=NULL,
+    run_all = function(to_run=NULL, random_n=NULL,
                        redo = FALSE, run_order,
                        save_output=self$save_output,
                        parallel=self$parallel,
+                       parallel_cores=self$parallel_cores,
                        parallel_temp_save=save_output,
                        write_start_files=save_output,
                        write_error_files=save_output,
                        delete_parallel_temp_save_after=FALSE,
                        varlist=self$varlist,
                        verbose=self$verbose,
+                       outfile,
                        warn_repeat=TRUE) {
       if (missing(run_order)) { # random for parallel for load balancing
         if (parallel) {run_order <- "random"}
@@ -238,6 +257,14 @@ ffexp <- R6::R6Class(
       }
       if (!is.null(to_run)) {
         # to_run given
+      } else if (!is.null(random_n)) { # Pick a random n from not yet completed
+        stopifnot(length(random_n)==1, random_n>=1)
+        choosefrom <- which(!self$completed_runs)
+        if (length(choosefrom)==1) { # sample is bad with length 1 vector
+          to_run <- choosefrom
+        } else {
+          to_run <- sample(choosefrom, min(length(choosefrom), random_n), replace=F)
+        }
       } else if (!redo) { # Only run ones that haven't been run yet
         to_run <- which(self$completed_runs == FALSE)
       } else {
@@ -256,16 +283,32 @@ ffexp <- R6::R6Class(
                          "reverse, or random #567128"))}
 
       if (parallel && length(to_run > 0)) {
+        if (parallel_cores!=self$parallel_cores) {
+          self$set_parallel_cores(parallel_cores)
+        }
         # pc <- parallel::detectCores()
         # cl1 <- parallel::makeCluster(spec=pc, type="SOCK")
         # parallel::parSapply(cl=cl1, to_run,function(ii){self$run_one(ii)})
-        if (is.null(self$parallel_cluster)) {
+        if (is.null(self$parallel_cluster) ||
+            !("SOCKcluster" %in% class(self$parallel_cluster)) ||
+            inherits(try(print(f1$parallel_cluster[[1]]), silent=T), 'try-error')) {
+          if (length(self$parallel_cores)!=1 || #!is.integer(self$parallel_cores) ||
+              self$parallel_cores<1) {
+            stop(paste(c('$parallel_cores is invalid:', self$parallel_cores),
+                       collapse=' '))
+          }
           # Make cluster
-          self$create_save_folder_if_nonexistent()
+
+          # Save masteroutput file. Allow use to set, on one computer it hangs
+          #  when given, so user must give in ""
+          if (missing(outfile)) {
+            outfile <- paste0(self$folder_path,
+                              "/parallel_MASTEROUTPUT.txt")
+            self$create_save_folder_if_nonexistent()
+          }
           self$parallel_cluster <- parallel::makeCluster(
             spec=self$parallel_cores, type = "SOCK",
-            outfile=paste0(self$folder_path,
-                           "/parallel_MASTEROUTPUT.txt"))
+            outfile=outfile)
           # Export any variables
           if (!is.null(varlist)) {
             parallel::clusterExport(cl=self$parallel_cluster,
@@ -273,9 +316,22 @@ ffexp <- R6::R6Class(
           }
         }
         if (parallel_temp_save) {self$create_save_folder_if_nonexistent()}
-        cat("About to start run in parallel, run order is:\n    ",
-            to_run,
-            "\n")
+        if (verbose>=1) {
+          if (length(to_run) <= 60) {
+            to_run_print <- paste(to_run, collapse=' ')
+          } else {
+            to_run_print <- paste(c(to_run[1:10], "...", tail(to_run, 10),
+                                    paste0("(", length(to_run), " total)")),
+                                  collapse=' ')
+          }
+          cat("About to start run in parallel (", self$parallel_cores,
+              " cores) at ",
+              as.character(Sys.time()),
+              ", run order is:\n    ",
+              to_run_print,
+              "\n", sep='')
+          cat("Running...")
+        }
         # cat("\tCluster is"); print(self$parallel_cluster)
         # browser()
         parout <- parallel::clusterApplyLB(
@@ -293,6 +349,9 @@ ffexp <- R6::R6Class(
             }
             tout
           })
+        if (verbose >= 1) {
+          cat("\r... finished at", as.character(Sys.time()), "\n")
+        }
         lapply(parout,
                function(oneout) {do.call(self$add_result_of_one, oneout)})
         parallel::stopCluster(self$parallel_cluster)
@@ -305,25 +364,215 @@ ffexp <- R6::R6Class(
                      paste0(self$folder_path,
                             "/parallel_temp_output_",ii,".rds"))
                  })
-          self$delete_save_folder_if_empty()
+          self$delete_save_folder_if_empty(verbose=0)
         }
       } else { # Not parallel
-        sapply(to_run,
-               function (ii) {
-                 tout <- self$run_one(ii, write_start_files=write_start_files,
-                                      write_error_files=write_error_files,
-                                      warn_repeat=warn_repeat,
-                                      save_output=save_output,
-                                      verbose=verbose)
-                 if (parallel_temp_save) {
-                   saveRDS(object=tout,
-                           file=paste0(self$folder_path,
-                                       "/parallel_temp_output_",ii,".rds"))
-                 }
-                 tout
-               })
+        # if (exists('dbro') && dbro) {browser()}
+        runs_with_error <- integer()
+        for (ii in to_run) {
+          try_one <- try({
+            tout <- self$run_one(ii, write_start_files=write_start_files,
+                                 write_error_files=write_error_files,
+                                 warn_repeat=warn_repeat,
+                                 save_output=save_output,
+                                 verbose=verbose,
+                                 return_list_result_of_one=T)
+            # tout is only the right thing to save if is_parallel=T
+            # in run_one, this shouldn't work
+            if (parallel_temp_save) {
+              self$create_save_folder_if_nonexistent()
+              saveRDS(object=tout,
+                      file=paste0(self$folder_path,
+                                  "/parallel_temp_output_",ii,".rds"))
+            }
+            TRUE # Return something from the try block if no error
+          }, silent=verbose<1)
+          if (inherits(try_one, 'try-error')) {
+            runs_with_error <- c(runs_with_error, ii)
+          }
+        }
+        if (length(runs_with_error) > 0) {
+          # browser()
+          if (verbose >= 1) {
+            cat('Errors in run_all with runs:', runs_with_error, '\n')
+          }
+          # cat('Error message is:\n')
+          # cat(try_one)
+          stop(try_one)
+        }
       }
       # self$postprocess_outdf()
+      invisible(self)
+    },
+    #' @description Run the experiment for a given time, not for a specified
+    #' number of trials. Runs `batch_size` trials between checking the time
+    #' elapsed, only needs to be more than 1 when running in parallel.
+    #' It will complete the current batch before stopping, it does not quit
+    #' in the middle of the batch when reaching the time limit, so it will
+    #' go over the time limit given.
+    #' @param sec Number of seconds to run for
+    #' @param batch_size Number of trials to run between checking the time
+    #' elapsed.
+    #' @param show_time_in_bar The progress bar can show either the number of
+    #' runs completed or the time elapsed.
+    #' @param save_output Should the output be saved?
+    #' @param parallel Should it be run in parallel?
+    #' @param parallel_cores When running in parallel, how many cores should
+    #' be used. Not actually the number of cores used, actually the number
+    #' of clusters created. Can be more than the computer has available,
+    #' but will hurt performance. Can set to 'detect' to have it detect
+    #' how many cores are available and use that, or 'detect-1' to use
+    #' one fewer than there are.
+    #' @param parallel_temp_save Should temp files be written when running
+    #' in parallel? Prevents losing results if it crashes partway through.
+    #' @param write_start_files Should start files be written?
+    #' @param write_error_files Should error files be written for rows that
+    #' fail?
+    #' @param delete_parallel_temp_save_after If using parallel temp save
+    #' files, should they be deleted afterwards?
+    #' @param varlist A character vector of names of variables to be passed
+    #' the the parallel cluster.
+    #' @param verbose How much should be printed when running. 0 is none,
+    #' 2 is average.
+    #' @param warn_repeat Should warnings be given when repeating already
+    #' completed rows?
+    run_for_time = function(sec, batch_size,
+                            show_time_in_bar=FALSE,
+                            # to_run=NULL, random_n=NULL,
+                            # redo = FALSE, run_order,
+                            save_output=self$save_output,
+                            parallel=self$parallel,
+                            parallel_cores=self$parallel_cores,
+                            parallel_temp_save=save_output,
+                            write_start_files=save_output,
+                            write_error_files=save_output,
+                            delete_parallel_temp_save_after=FALSE,
+                            varlist=self$varlist,
+                            verbose=self$verbose,
+                            warn_repeat=TRUE) {
+      start_time <- Sys.time()
+      num_completed_before <- sum(self$completed_runs)
+      # bar can show run time or runs completed
+      # show_time_in_bar <- FALSE
+      if (show_time_in_bar) {
+        pb <- progress::progress_bar$new(
+          format=paste0("  Running for time (:spin) [:bar] :elapsed / ", sec, "s"),
+          total=sec)
+        pb$tick(0)
+      } else {
+        pb <- progress::progress_bar$new(
+          format=paste0("  Running for time :elapsed / ", sec,"s (:spin) [:bar] ",
+                        "Runs completed: :current / ", length(self$completed_runs), ""),
+          total=length(self$completed_runs))
+        pb$tick(sum(self$completed_runs))
+      }
+      while(TRUE) {
+        if (all(self$completed_runs)) {
+          pb$terminate()
+          cat("Completed all runs in",
+              round(as.numeric(Sys.time() - start_time, units='secs'), 1),
+              "seconds", "\n")
+          break
+        }
+        if (as.numeric(Sys.time() - start_time, units='secs') >= sec) {
+          pb$terminate()
+          cat("Ran for", round(as.numeric(Sys.time() - start_time, units='secs'), 1), "seconds",
+              "up to", sum(self$completed_runs),"/", length(self$completed_runs), '\n')
+          break
+        }
+        self$run_all(random_n = batch_size,
+                     save_output=save_output,
+                     parallel=parallel,
+                     parallel_cores=parallel_cores,
+                     parallel_temp_save=parallel_temp_save,
+                     write_start_files=write_start_files,
+                     write_error_files=write_error_files,
+                     delete_parallel_temp_save_after=delete_parallel_temp_save_after,
+                     varlist=varlist,
+                     verbose=0,
+                     warn_repeat=warn_repeat
+        )
+        if (show_time_in_bar) {
+          pb$update(ratio=min(1, as.numeric(Sys.time() - start_time, units='secs') / sec))
+        } else {
+          pb$update(ratio=sum(self$completed_runs) / length(self$completed_runs))
+        }
+      }
+      invisible(self)
+    },
+    #' @description Run batches. Allows for better progress visualization
+    #' and saving when running in parallel
+    #' @param nsb Number of super batches
+    #'
+    # @param to_run Which rows should be run? If NULL, then all that haven't
+    # been run yet.
+    # @param random_n Randomly selects n trials among those not yet completed
+    # and runs them.
+    #' @param redo Should already completed rows be run again?
+    #' @param run_order In what order should the rows by run?
+    #' Options: random, in_order, and reverse.
+    #' @param save_output Should the output be saved?
+    #' @param parallel Should it be run in parallel?
+    #' @param parallel_cores When running in parallel, how many cores should
+    #' be used. Not actually the number of cores used, actually the number
+    #' of clusters created. Can be more than the computer has available,
+    #' but will hurt performance. Can set to 'detect' to have it detect
+    #' how many cores are available and use that, or 'detect-1' to use
+    #' one fewer than there are.
+    #' @param parallel_temp_save Should temp files be written when running
+    #' in parallel? Prevents losing results if it crashes partway through.
+    #' @param write_start_files Should start files be written?
+    #' @param write_error_files Should error files be written for rows that
+    #' fail?
+    #' @param delete_parallel_temp_save_after If using parallel temp save
+    #' files, should they be deleted afterwards?
+    #' @param varlist A character vector of names of variables to be passed
+    #' the the parallel cluster.
+    #' @param verbose How much should be printed when running. 0 is none,
+    #' 2 is average.
+    #' @param outfile Where should master output file be saved when running
+    #' in parallel?
+    #' @param warn_repeat Should warnings be given when repeating already
+    #' completed rows?
+    run_superbatch = function(nsb, #to_run=NULL, random_n=NULL,
+                              redo = FALSE, run_order,
+                              save_output=self$save_output,
+                              parallel=self$parallel,
+                              parallel_cores=self$parallel_cores,
+                              parallel_temp_save=save_output,
+                              write_start_files=save_output,
+                              write_error_files=save_output,
+                              delete_parallel_temp_save_after=FALSE,
+                              varlist=self$varlist,
+                              verbose=self$verbose,
+                              warn_repeat=TRUE) {
+      # browser()
+      to_run <- which(!self$completed_runs)
+      if (length(to_run) == 0) {return(invisible(self))}
+      to_run <- to_run[sample(1:length(to_run))]
+      stopifnot(length(nsb) == 1, is.numeric(nsb), nsb > 0)
+      nbatch <- ceiling(length(to_run) / nsb)
+      stopifnot(nbatch > 0)
+      pb <- progress::progress_bar$new(total=nbatch)
+      pb$tick(0)
+      cat("Starting to run", length(to_run), "trials in batches of size", nsb, "\n")
+      for (i in 1:nbatch) {
+        to_run_i <- to_run[((i-1)*nsb + 1):min(nsb*i, length(to_run))]
+        self$run_all(to_run=to_run_i, #random_n=NULL,
+                     redo = redo, #run_order,
+                     save_output=save_output,
+                     parallel=parallel,
+                     parallel_cores=parallel_cores,
+                     parallel_temp_save=parallel_temp_save,
+                     write_start_files=write_start_files,
+                     write_error_files=write_error_files,
+                     delete_parallel_temp_save_after=delete_parallel_temp_save_after,
+                     varlist=varlist,
+                     verbose=0,
+                     warn_repeat=warn_repeat)
+        pb$tick()
+      }
+      cat("Finished running superbatches", "\n")
       invisible(self)
     },
     #' @description Run a single row of the experiment.
@@ -338,6 +587,8 @@ ffexp <- R6::R6Class(
     #' an error?
     #' @param warn_repeat Should a warning be given if repeating a row?
     #' @param is_parallel Is this being run in parallel?
+    #' @param return_list_result_of_one Should the list of the result of
+    #' this one be return?
     #' @param verbose How much should be printed when running. 0 is none,
     #' 2 is average.
     run_one = function(irow=NULL, save_output=self$save_output,
@@ -345,6 +596,7 @@ ffexp <- R6::R6Class(
                        write_error_files=save_output,
                        warn_repeat=TRUE,
                        is_parallel=FALSE,
+                       return_list_result_of_one=FALSE,
                        verbose=self$verbose) {
       # Set up single row to run
       if (is.null(irow)) { # If irow not given, set to next not run
@@ -374,11 +626,13 @@ ffexp <- R6::R6Class(
       # Can't just set row_list <- lapply since a function can't be named
       #  so to get names there we need to handle functions separately.
       row_list <- list()
+      # browser()
       lapply(1:ncol(self$nvars),
-             function(i) {
+             function(i) {#browser()
                ar <- self$arglist[[i]]
                if (is.data.frame(ar)) {
-                 tr <- as.list(ar[row_grid[1,i, drop=TRUE],])
+                 # FIX1COLDF added drop=FALSE
+                 tr <- as.list(ar[row_grid[1,i, drop=TRUE], , drop=FALSE])
                } else if (is.list(ar)) {
                  # tr <- ar[[row_grid[1,i]]]
                  tr <- lapply(ar, function(x) x[[row_grid[1,i]]])
@@ -414,10 +668,10 @@ ffexp <- R6::R6Class(
 
       # Get df for output row, must be number of string, no functions
       row_df_list <- lapply(1:ncol(self$nvars),
-                            function(i) {
+                            function(i) {#browser()
                               ar <- self$arglist[[i]]
                               if (is.data.frame(ar)) {
-                                tr <- as.list(ar[row_grid[1,i, drop=TRUE],])
+                                tr <- as.list(ar[row_grid[1,i, drop=TRUE], , drop=FALSE])
                               } else if (is.list(ar)) {
                                 # tr <- ar[[row_grid[1,i]]]
                                 tr <- lapply(ar, function(x) x[[row_grid[1,i]]])
@@ -437,7 +691,16 @@ ffexp <- R6::R6Class(
                               tr
                             })
       # Need to get list of lists out into single list
-      row_df <- as.list(unlist(row_df_list, recursive = FALSE))
+      # browser()
+      # This didn't work because it would convert numeric to char
+      # row_df <- as.list(unlist(row_df_list, recursive = FALSE))
+      # Instead do this. Hopefully it works. Didn't work.
+      # row_df <- lapply(row_df_list, function(x){x[[1]]})
+      # names(row_df) <- sapply(row_df_list, function(x){names(x)})
+      # Maybe just this?
+      # browser()
+      row_df <- do.call(c,
+                        lapply(row_df_list, function(lst) {if (is.list(lst)) {lst} else {as.list(lst)}}))
 
       # Write start file so user can see which ones are currently
       #  running and when they started.
@@ -461,14 +724,14 @@ ffexp <- R6::R6Class(
       # Run and time it
       try.run <- try({
         start_time <- Sys.time()
-        systime <- system.time(output <- do.call(self$eval_func, row_list))
+        systime <- system.time(output <- do.call(self$eval_func, row_list), gcFirst = FALSE)
         end_time <- Sys.time()
-      })
+      }, silent=verbose<1)
 
       # Delete write start file
       if (write_start_files && file.exists(write_start_file_path)) {
         unlink(write_start_file_path)
-        self$delete_save_folder_if_empty()
+        self$delete_save_folder_if_empty(verbose=0)
       }
 
       # If error while running, write out error file/message
@@ -492,24 +755,35 @@ ffexp <- R6::R6Class(
           cat("Error was:\n\n", file=write_error_file_path)
           cat(try.run[1], "\n", file=write_error_file_path)
         }
-        stop(paste0("Error in run_one for irow=",irow,"\n",try.run))
+        # print(self$rungrid2(irow))
+        stop(paste0("Error in run_one for irow=",irow,"\n",
+                    try.run,
+                    "To check inputs, call: $rungrid2(rows=", irow, ")\n"
+        ))
       }
 
-
+      # This needs to be added to object using self$add_result_of_one.
+      # But when running in parallel, this will be returned.
+      list_result_of_one <- list(output=output, systime=systime, irow=irow,
+                                 row_grid=row_grid, row_df=row_df,
+                                 start_time=start_time, end_time=end_time,
+                                 save_output=save_output)
       # If parallel need to return everything to be added to original object
       if (is_parallel) {
-        return(list(output=output, systime=systime, irow=irow,
-                    row_grid=row_grid, row_df=row_df,
-                    start_time=start_time, end_time=end_time,
-                    save_output=save_output))
+        return(list_result_of_one)
       }
       # If not parallel
       # Add results using function
-      self$add_result_of_one(output=output, systime=systime, irow=irow,
-                             row_grid=row_grid, row_df=row_df,
-                             start_time=start_time, end_time=end_time,
-                             save_output=save_output)
+      # self$add_result_of_one(output=output, systime=systime, irow=irow,
+      #                        row_grid=row_grid, row_df=row_df,
+      #                        start_time=start_time, end_time=end_time,
+      #                        save_output=save_output)
+      do.call(self$add_result_of_one, list_result_of_one)
 
+      # If asked, return the list of this result only, not full object.
+      if (return_list_result_of_one) {
+        return(list_result_of_one)
+      }
       # Return invisible self
       invisible(self)
     },
@@ -526,7 +800,8 @@ ffexp <- R6::R6Class(
     add_result_of_one = function(output, systime, irow, row_grid, row_df,
                                  start_time, end_time, save_output) {
       # This is used to save results after running an item
-
+      # browser()
+      # stopifnot(is.data.frame(row_df))
       # Save entire output as list
       self$outlist[[irow]] <- output
 
@@ -538,6 +813,13 @@ ffexp <- R6::R6Class(
         # newdf0$start_time <- start_time
         # newdf0$end_time <- end_time
       } else if (is.vector(output) && !is.list(output)) {
+        # Change name so it's not named t.output.
+        if (is.null(names(output))) {
+          names(output) <- paste0("V", 1:length(output))
+        }
+        # if (any(names(output) == "")) { # E.g., c(3, b=4)
+        #   # By default they get named V1, V2, etc, so it's fine.
+        # }
         newdf0 <- data.frame(t(output), stringsAsFactors=FALSE)
         newdf0$runtime <- systime[3]
       } else {
@@ -587,7 +869,16 @@ ffexp <- R6::R6Class(
 
       # Put it in place, but only if dimensions match up
       if (self$number_runs * nrow(newdf1) == nrow(self$outrawdf)) {
+        # Make sure ncol matches
+        if (ncol(self$outrawdf) != ncol(newdf1)) {
+          stop(paste("ncol(self$outrawdf) != ncol(newdf1)",
+                     ncol(self$outrawdf), ncol(newdf1)))
+        }
         self$outrawdf[((irow-1)*nr+1):(irow*nr), ] <- newdf1
+        if (ncol(self$outcleandf) != ncol(newdf_clean)) {
+          stop(paste("ncol(self$outcleandf) != ncol(newdf_clean)",
+                     ncol(self$outcleandf), ncol(newdf_clean)))
+        }
         self$outcleandf[((irow-1)*nr+1):(irow*nr), ] <- newdf_clean
       }
 
@@ -615,6 +906,17 @@ ffexp <- R6::R6Class(
         ggplot2::xlab("Start and end time") +
         ggplot2::ylab("Run number")
       # invisible(self)
+    },
+    #' @description Plot pairs of inputs and outputs.
+    #' Helps see correlations and distributions.
+    plot_pairs = function() {
+      nvar <- ncol(self$rungrid)
+      tdf <- self$outcleandf[, 1:(ncol(self$outcleandf) - 3)]
+      GGally::ggpairs(data=tdf)
+    },
+    #' @description Calling `plot` on an `ffexp` object calls `plot_pairs()`
+    plot = function() {
+      self$plot_pairs()
     },
     #' @description Calculate the effects of each variable as if this
     #' was an experiment using a linear model.
@@ -659,10 +961,61 @@ ffexp <- R6::R6Class(
              }
       )
     },
+    #' @description Calculate the effects of each variable as if this
+    #' was an experiment using a linear model.
+    calculate_effects2 = function() {
+      nvar <- ncol(self$rungrid)
+      outputcols <- (nvar+1):(ncol(self$outrawdf)-3)
+      sapply(1:nvar,
+             function(i) {
+               tdf <- plyr::ddply(self$outrawdf[,c(i, outputcols)],
+                                  names(self$rungrid)[i],
+                                  colMeans)
+               # Need df first, then list, then vector
+               if (is.data.frame(self$arglist[[i]])) {
+                 tdf[,1] <- rownames(self$arglist[[i]])[tdf[,1]]
+               } else if (is.list(self$arglist[[i]])) {
+                 tdf[,1] <- names(self$arglist[[i]][[1]])[tdf[,1]]
+               } else if (is.vector(self$arglist[[i]])) {
+                 tdf[,1] <- self$arglist[[i]][tdf[,1]]
+               }
+
+               return(coef(lm(paste(colnames(tdf)[2], " ~ ", colnames(tdf)[1]), data=tdf))[2])
+
+               # nlev <- nrow(tdf)
+               # if (nlev > 1) {
+               #   browser()
+               #   for (j in (2:nlev)) {
+               #     for (k in 1:(j-1)) {
+               #       # newdf <- data.frame(diffname=paste0(tdf[j,1],"-",
+               #       #                     tdf[k,1]),
+               #       #                     mean=tdf[j,2]-tdf[k,2],
+               #       #                     se=tdf[j,3]-tdf[k,3],
+               #       #                     runtime=tdf[j,4]-tdf[k,4])
+               #       newdf <- data.frame(tempname=paste0(tdf[j,1],"-",tdf[k,1]))
+               #       colnames(newdf)[1] <- names(self$rungrid)[i]
+               #       newdf <- cbind(newdf,
+               #                      tdf[j,outputcols-nvar+1]-
+               #                        tdf[k,outputcols-nvar+1])
+               #       tdf <- rbind(tdf, newdf)
+               #     }
+               #   }
+               # }
+               # Convert to list here so I can give it a name
+               tl <- list(tdf)
+               names(tl) <- paste0("Mean for levels of ", names(self$rungrid)[i])
+               tl
+             }
+      )
+    },
     #' @description Save this R6 object
-    save_self = function() {
+    #' @param verbose How much should be printed when running. 0 is none,
+    #' 2 is average.
+    save_self = function(verbose=self$verbose) {
       file_path <- paste0(self$folder_path,"/object.rds")
-      cat("Saving to ", file_path, "\n")
+      if (verbose >= 1) {
+        cat("Saving to ", file_path, "\n")
+      }
       self$create_save_folder_if_nonexistent()
       saveRDS(object = self, file = file_path)
       invisible(self)
@@ -679,14 +1032,56 @@ ffexp <- R6::R6Class(
       }
       invisible(self)
     },
+    #' @description Rename the save folder
+    #' @param new_folder_path New path for the save folder
+    #' @param new_folder_name If you want the new save folder to be in the
+    #' current directory, you can use this instead of `new_folder_path` and
+    #' just give the folder name.
+    rename_save_folder = function(new_folder_path, new_folder_name) {
+      stopifnot(missing(new_folder_path) + missing(new_folder_name) == 1)
+      if (missing(new_folder_path)) {
+        new_folder_path <- paste0(getwd(), "//", new_folder_name)
+      }
+      # return()
+      # browser()
+      # Check if that folder exists
+      if (dir.exists(new_folder_path)) {
+        stop(paste("Folder already exists"))
+      }
+      # # Copy files over
+      # filenames <- list.files(self$folder_path)
+      # if (length(filenames) > 0) {
+      #   dir.create(new_folder_path)
+      #   for (filename in filenames) {
+      #     oldfilepath <- paste0(self$folder_path, "//", filename)
+      #     stopifnot(file.copy(from=oldfilepath, to=paste0(new_folder_path, "//", filename)))
+      #     file.remove(oldfilepath)
+      #   }
+      # }
+      # Delete files and old folder if empty
+      # self$delete_save_folder_if_empty()
+
+      # Can rename a folder using file.rename, simpler than above
+      if (dir.exists(self$folder_path)) {
+        file.rename(self$folder_path, new_folder_path)
+      }
+
+      self$folder_path <- new_folder_path
+
+      return(invisible(self))
+    },
     #' @description Delete the save folder if it is empty.
     #' Used to prevent leaving behind empty folders.
-    delete_save_folder_if_empty = function() {
+    #' @param verbose How much should be printed when running. 0 is none,
+    #' 2 is average.
+    delete_save_folder_if_empty = function(verbose=self$verbose) {
       if (length(list.files(path=self$folder_path,
                             all.files = TRUE, no.. = TRUE)) == 0) {
         unlink(self$folder_path, recursive = TRUE)
       } else {
-        message("Folder is not empty")
+        if (self$verbose >= 1) {
+          message("Folder is not empty")
+        }
       }
       invisible(self)
     },
@@ -698,12 +1093,18 @@ ffexp <- R6::R6Class(
     #' are recovered? If TRUE, make sure you save the ffexp object after
     #' running this function so
     #' you don't lose the data.
-    recover_parallel_temp_save = function(delete_after=TRUE) {
+    #' @param only_reload_new Will only reload output from runs that don't show as
+    #' completed yet. Can make it much faster if there are many saved files, but
+    #' most have already been loaded to this object.
+    recover_parallel_temp_save = function(delete_after=FALSE, only_reload_new=FALSE) {
       # Read in and save
+      # Progress bar
+      pb <- progress::progress_bar$new(total=nrow(self$rungrid))
+      pb$tick(0)
       for (ii in 1:nrow(self$rungrid)) {
         # Check for file
         file_ii <- paste0(self$folder_path,"/parallel_temp_output_",ii,".rds")
-        if (file.exists(file_ii)) {
+        if (file.exists(file_ii) && !(only_reload_new && self$completed_runs[ii])) {
           # Read in
           oneout <- readRDS(file=file_ii)
           do.call(self$add_result_of_one, oneout)
@@ -712,8 +1113,9 @@ ffexp <- R6::R6Class(
             unlink(file_ii)
           }
         }
+        pb$tick()
       }
-      self$delete_save_folder_if_empty()
+      self$delete_save_folder_if_empty(verbose=0)
     },
     #' @description Display the input rows of the experiment.
     #' rungrid just gives integers, this gives the actual values.
@@ -731,9 +1133,10 @@ ffexp <- R6::R6Class(
           row_grid <- self$rungrid[iirow, , drop=FALSE]
           row_list <- lapply(1:ncol(self$nvars),
                              function(i) {
+                               # browser()
                                ar <- self$arglist[[i]]
                                if (is.data.frame(ar)) {
-                                 tr <- as.list(ar[row_grid[1,i, drop=TRUE],])
+                                 tr <- as.list(ar[row_grid[1,i, drop=TRUE], , drop=FALSE])
                                } else if (is.list(ar)) {
                                  # tr <- ar[[row_grid[1,i]]]
                                  tr <- lapply(ar,
@@ -895,8 +1298,18 @@ ffexp <- R6::R6Class(
       # Or could use rungrid and replace new_values with biggest number
       # existing_indexes <- which(
       #   new_exp$rungrid[,arg_name] < max(new_exp$rungrid[,arg_name]))
+      # Loop over runs that were already part of experiment, completed or not.
+      # Copy over data, leaving space for new runs.
       existing_indexes <- which(
         new_exp$rungrid[,arg_name] %in% existing_level_indexes)
+      # browser()
+      # Need to add rows to outcleandf, and copy over existing outcleandf
+      nrowsperindex <- nrow(self$outcleandf) / self$number_runs
+      new_exp$outcleandf <- new_exp$outcleandf[nrow(new_exp$outcleandf) +
+                                                 1:(new_exp$number_runs*nrowsperindex), ]
+      rownames(new_exp$outcleandf) <- 1:nrow(new_exp$outcleandf)
+      new_exp$outrawdf <- new_exp$outrawdf[nrow(new_exp$outrawdf) + 1:(new_exp$number_runs*nrowsperindex), ]
+      rownames(new_exp$outrawdf) <- 1:nrow(new_exp$outrawdf)
       for(old_index in existing_indexes) {
         old_rg_row <- self$rungrid[old_index,]
         new_index <- which(apply(new_exp$rungrid,1,
@@ -906,15 +1319,22 @@ ffexp <- R6::R6Class(
         # new_index <- 1
         new_exp$completed_runs[new_index] <- self$completed_runs[old_index]
         new_exp$outlist[[new_index]] <- self$outlist[[old_index]]
+        new_exp$outcleandf[1:nrowsperindex + nrowsperindex*(new_index-1), ] <-
+          self$outcleandf[1:nrowsperindex + nrowsperindex*(old_index-1), ]
+        new_exp$outrawdf[1:nrowsperindex + nrowsperindex*(new_index-1), ] <-
+          self$outrawdf[1:nrowsperindex + nrowsperindex*(old_index-1), ]
       }; rm(old_rg_row, new_index, old_index)
+      # Loop over new runs, prepare them.
       for (new_index in setdiff(1:new_exp$number_runs, existing_indexes)) {
         stopifnot(!new_exp$completed_runs[new_index])
         # Needed in order to run add_level twice in a row without having run it
         new_exp$outlist[[new_index]] <- list(NULL)
       }
+      # browser("outcleandf")
+      # new_exp$outcleandf
       # Notify user that it wasn't changed in place
       if (!suppressMessage) {
-        message("Returning new object with added variable")
+        message("Returning new object with added variable, object was not changed in place.")
       }
       return(new_exp)
     },
@@ -925,13 +1345,42 @@ ffexp <- R6::R6Class(
         c(
           "ffexp object from the comparer package\n",
           "   ", sum(self$completed_runs), " / ",
-          length(self$completed_runs), " completed\n",
-          "   parallel : ", self$parallel, "\n",
+          length(self$completed_runs), " completed",
+          if (sum(self$completed_runs) > 0 && sum(!self$completed_runs) > 0) {
+            paste0("  (est. time remaining: ",
+                   round(mean(self$outcleandf$runtime[self$completed_runs]) *
+                           sum(!self$completed_runs), 2), " sec.)\n")
+          } else {'\n'},
+          "   parallel : ", self$parallel,
+          if (self$parallel) {c(' (', self$parallel_cores, ' cores)')}
+          else {''},
+          "\n",
           "   Use $run_all() to run all remaining\n",
           "   Use $run_one() to run a single\n"
         )
       )
       cat(s, sep="")
+    },
+    #' @description Set the number of parallel cores to be used when
+    #' running in parallel. Needed in case user sets "detect"
+    #' @param parallel_cores When running in parallel, how many cores should
+    #' be used. Not actually the number of cores used, actually the number
+    #' of clusters created. Can be more than the computer has available,
+    #' but will hurt performance. Can set to 'detect' to have it detect
+    #' how many cores are available and use that, or 'detect-1' to use
+    #' one fewer than there are.
+    set_parallel_cores = function(parallel_cores) {
+      if (parallel_cores == "detect") {
+        self$parallel_cores <- parallel::detectCores()
+      } else if (parallel_cores == "detect-1") {
+        self$parallel_cores <- parallel::detectCores() - 1
+        if (self$parallel_cores == 0) {
+          "Only 1 core detected, can't do 'detect-1'"
+        }
+      } else {
+        self$parallel_cores <- parallel_cores
+      }
+      invisible(self)
     },
     #' @description  Stop the parallel cluster.
     stop_cluster = function() {
@@ -992,8 +1441,8 @@ if (F) {
   ); cd$run_all(); cd$outcleandf
   # Calculate parallel efficiency
   with(data = cc$outcleandf,
-       sum(runtime) / as.numeric(max(end_time) - min(start_time)),
-       units="secs")
+       sum(runtime) / as.numeric(max(end_time) - min(start_time),
+                                 units="secs"))
   # parallel 'detect-1'
   system.time(ffexp$new(a=1:4, eval_func=function(a){Sys.sleep(1)},
                         parallel = T,

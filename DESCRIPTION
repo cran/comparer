@@ -1,7 +1,7 @@
 Package: comparer
 Type: Package
 Title: Compare Output and Run Time
-Version: 0.2.1
+Version: 0.2.2
 Authors@R: c(
   person("Collin", "Erickson", , "collinberickson@gmail.com", c("aut", "cre"))
   )
@@ -10,25 +10,25 @@ Description: Quickly run experiments to compare the run time and output of
     and will calculate statistics comparing the resulting outputs.
     It can be used to compare model fits to the same data or
     see which function runs faster.
-    The function ffexp() runs a function using all possible combinations
+    The R6 class ffexp$new() runs a function using all possible combinations
     of selected inputs. This is useful for comparing the effect of
     different parameter values. It can also run in parallel and
     automatically save intermediate results, which is very useful
     for long computations.
 License: GPL-3
 Encoding: UTF-8
-LazyData: true
 Imports: R6
-Suggests: plyr, progress, testthat, covr, knitr, ggplot2, parallel,
-        snow, rmarkdown, reshape, tibble, microbenchmark
-RoxygenNote: 7.1.0
+Suggests: plyr, progress, testthat (>= 2.1.0), covr, knitr, ggplot2,
+        GGally, parallel, snow, rmarkdown, reshape, tibble, lhs,
+        DiceKriging, DiceOptim, reshape2, microbenchmark
+RoxygenNote: 7.1.1
 URL: https://github.com/CollinErickson/comparer
 BugReports: https://github.com/CollinErickson/comparer/issues
 VignetteBuilder: knitr
 Language: en-US
 NeedsCompilation: no
-Packaged: 2020-03-25 01:00:29 UTC; collin
+Packaged: 2021-03-29 02:28:02 UTC; collin
 Author: Collin Erickson [aut, cre]
 Maintainer: Collin Erickson <collinberickson@gmail.com>
 Repository: CRAN
-Date/Publication: 2020-03-25 18:20:03 UTC
+Date/Publication: 2021-03-29 09:10:09 UTC

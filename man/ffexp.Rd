@@ -124,18 +124,25 @@ available, or 'detect-1' will do one less than that.}
 \itemize{
 \item \href{#method-new}{\code{ffexp$new()}}
 \item \href{#method-run_all}{\code{ffexp$run_all()}}
+\item \href{#method-run_for_time}{\code{ffexp$run_for_time()}}
+\item \href{#method-run_superbatch}{\code{ffexp$run_superbatch()}}
 \item \href{#method-run_one}{\code{ffexp$run_one()}}
 \item \href{#method-add_result_of_one}{\code{ffexp$add_result_of_one()}}
 \item \href{#method-plot_run_times}{\code{ffexp$plot_run_times()}}
+\item \href{#method-plot_pairs}{\code{ffexp$plot_pairs()}}
+\item \href{#method-plot}{\code{ffexp$plot()}}
 \item \href{#method-calculate_effects}{\code{ffexp$calculate_effects()}}
+\item \href{#method-calculate_effects2}{\code{ffexp$calculate_effects2()}}
 \item \href{#method-save_self}{\code{ffexp$save_self()}}
 \item \href{#method-create_save_folder_if_nonexistent}{\code{ffexp$create_save_folder_if_nonexistent()}}
+\item \href{#method-rename_save_folder}{\code{ffexp$rename_save_folder()}}
 \item \href{#method-delete_save_folder_if_empty}{\code{ffexp$delete_save_folder_if_empty()}}
 \item \href{#method-recover_parallel_temp_save}{\code{ffexp$recover_parallel_temp_save()}}
 \item \href{#method-rungrid2}{\code{ffexp$rungrid2()}}
 \item \href{#method-add_variable}{\code{ffexp$add_variable()}}
 \item \href{#method-add_level}{\code{ffexp$add_level()}}
 \item \href{#method-print}{\code{ffexp$print()}}
+\item \href{#method-set_parallel_cores}{\code{ffexp$set_parallel_cores()}}
 \item \href{#method-stop_cluster}{\code{ffexp$stop_cluster()}}
 \item \href{#method-finalize}{\code{ffexp$finalize()}}
 \item \href{#method-clone}{\code{ffexp$clone()}}
@@ -172,7 +179,11 @@ named arguments matching the names of ...}
 \item{\code{parallel}}{Should a parallel cluster be used?}
 
 \item{\code{parallel_cores}}{When running in parallel, how many cores should
-be used.}
+be used. Not actually the number of cores used, actually the number
+of clusters created. Can be more than the computer has available,
+but will hurt performance. Can set to 'detect' to have it detect
+how many cores are available and use that, or 'detect-1' to use
+one fewer than there are.}
 
 \item{\code{folder_path}}{Where the data and files should be stored.
 If not given, a folder in the existing directory will be created.}
@@ -196,10 +207,92 @@ be run in parallel, and what files should be saved.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{ffexp$run_all(
   to_run = NULL,
+  random_n = NULL,
   redo = FALSE,
   run_order,
   save_output = self$save_output,
   parallel = self$parallel,
+  parallel_cores = self$parallel_cores,
+  parallel_temp_save = save_output,
+  write_start_files = save_output,
+  write_error_files = save_output,
+  delete_parallel_temp_save_after = FALSE,
+  varlist = self$varlist,
+  verbose = self$verbose,
+  outfile,
+  warn_repeat = TRUE
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{to_run}}{Which rows should be run? If NULL, then all that haven't
+been run yet.}
+
+\item{\code{random_n}}{Randomly selects n trials among those not yet completed
+and runs them.}
+
+\item{\code{redo}}{Should already completed rows be run again?}
+
+\item{\code{run_order}}{In what order should the rows by run?
+Options: random, in_order, and reverse.}
+
+\item{\code{save_output}}{Should the output be saved?}
+
+\item{\code{parallel}}{Should it be run in parallel?}
+
+\item{\code{parallel_cores}}{When running in parallel, how many cores should
+be used. Not actually the number of cores used, actually the number
+of clusters created. Can be more than the computer has available,
+but will hurt performance. Can set to 'detect' to have it detect
+how many cores are available and use that, or 'detect-1' to use
+one fewer than there are.}
+
+\item{\code{parallel_temp_save}}{Should temp files be written when running
+in parallel? Prevents losing results if it crashes partway through.}
+
+\item{\code{write_start_files}}{Should start files be written?}
+
+\item{\code{write_error_files}}{Should error files be written for rows that
+fail?}
+
+\item{\code{delete_parallel_temp_save_after}}{If using parallel temp save
+files, should they be deleted afterwards?}
+
+\item{\code{varlist}}{A character vector of names of variables to be passed
+the the parallel cluster.}
+
+\item{\code{verbose}}{How much should be printed when running. 0 is none,
+2 is average.}
+
+\item{\code{outfile}}{Where should master output file be saved when running
+in parallel?}
+
+\item{\code{warn_repeat}}{Should warnings be given when repeating already
+completed rows?}
+}
+\if{html}{\out{</div>}}
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-run_for_time"></a>}}
+\if{latex}{\out{\hypertarget{method-run_for_time}{}}}
+\subsection{Method \code{run_for_time()}}{
+Run the experiment for a given time, not for a specified
+number of trials. Runs `batch_size` trials between checking the time
+elapsed, only needs to be more than 1 when running in parallel.
+It will complete the current batch before stopping, it does not quit
+in the middle of the batch when reaching the time limit, so it will
+go over the time limit given.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ffexp$run_for_time(
+  sec,
+  batch_size,
+  show_time_in_bar = FALSE,
+  save_output = self$save_output,
+  parallel = self$parallel,
+  parallel_cores = self$parallel_cores,
   parallel_temp_save = save_output,
   write_start_files = save_output,
   write_error_files = save_output,
@@ -213,17 +306,24 @@ be run in parallel, and what files should be saved.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{to_run}}{Which rows should be run? If NULL, then all that haven't
-been run yet.}
+\item{\code{sec}}{Number of seconds to run for}
 
-\item{\code{redo}}{Should already completed rows be run again?}
+\item{\code{batch_size}}{Number of trials to run between checking the time
+elapsed.}
 
-\item{\code{run_order}}{In what order should the rows by run?
-Options: random, in_order, and reverse.}
+\item{\code{show_time_in_bar}}{The progress bar can show either the number of
+runs completed or the time elapsed.}
 
 \item{\code{save_output}}{Should the output be saved?}
 
 \item{\code{parallel}}{Should it be run in parallel?}
+
+\item{\code{parallel_cores}}{When running in parallel, how many cores should
+be used. Not actually the number of cores used, actually the number
+of clusters created. Can be more than the computer has available,
+but will hurt performance. Can set to 'detect' to have it detect
+how many cores are available and use that, or 'detect-1' to use
+one fewer than there are.}
 
 \item{\code{parallel_temp_save}}{Should temp files be written when running
 in parallel? Prevents losing results if it crashes partway through.}
@@ -249,6 +349,77 @@ completed rows?}
 }
 }
 \if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-run_superbatch"></a>}}
+\if{latex}{\out{\hypertarget{method-run_superbatch}{}}}
+\subsection{Method \code{run_superbatch()}}{
+Run batches. Allows for better progress visualization
+and saving when running in parallel
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ffexp$run_superbatch(
+  nsb,
+  redo = FALSE,
+  run_order,
+  save_output = self$save_output,
+  parallel = self$parallel,
+  parallel_cores = self$parallel_cores,
+  parallel_temp_save = save_output,
+  write_start_files = save_output,
+  write_error_files = save_output,
+  delete_parallel_temp_save_after = FALSE,
+  varlist = self$varlist,
+  verbose = self$verbose,
+  warn_repeat = TRUE
+)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{nsb}}{Number of super batches}
+
+\item{\code{redo}}{Should already completed rows be run again?}
+
+\item{\code{run_order}}{In what order should the rows by run?
+Options: random, in_order, and reverse.}
+
+\item{\code{save_output}}{Should the output be saved?}
+
+\item{\code{parallel}}{Should it be run in parallel?}
+
+\item{\code{parallel_cores}}{When running in parallel, how many cores should
+be used. Not actually the number of cores used, actually the number
+of clusters created. Can be more than the computer has available,
+but will hurt performance. Can set to 'detect' to have it detect
+how many cores are available and use that, or 'detect-1' to use
+one fewer than there are.}
+
+\item{\code{parallel_temp_save}}{Should temp files be written when running
+in parallel? Prevents losing results if it crashes partway through.}
+
+\item{\code{write_start_files}}{Should start files be written?}
+
+\item{\code{write_error_files}}{Should error files be written for rows that
+fail?}
+
+\item{\code{delete_parallel_temp_save_after}}{If using parallel temp save
+files, should they be deleted afterwards?}
+
+\item{\code{varlist}}{A character vector of names of variables to be passed
+the the parallel cluster.}
+
+\item{\code{verbose}}{How much should be printed when running. 0 is none,
+2 is average.}
+
+\item{\code{warn_repeat}}{Should warnings be given when repeating already
+completed rows?}
+
+\item{\code{outfile}}{Where should master output file be saved when running
+in parallel?}
+}
+\if{html}{\out{</div>}}
+}
+}
+\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-run_one"></a>}}
 \if{latex}{\out{\hypertarget{method-run_one}{}}}
 \subsection{Method \code{run_one()}}{
@@ -264,6 +435,7 @@ instead.
   write_error_files = save_output,
   warn_repeat = TRUE,
   is_parallel = FALSE,
+  return_list_result_of_one = FALSE,
   verbose = self$verbose
 )}\if{html}{\out{</div>}}
 }
@@ -284,6 +456,9 @@ an error?}
 \item{\code{warn_repeat}}{Should a warning be given if repeating a row?}
 
 \item{\code{is_parallel}}{Is this being run in parallel?}
+
+\item{\code{return_list_result_of_one}}{Should the list of the result of
+this one be return?}
 
 \item{\code{verbose}}{How much should be printed when running. 0 is none,
 2 is average.}
@@ -343,6 +518,27 @@ Plot the run times of each trial.
 
 }
 \if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-plot_pairs"></a>}}
+\if{latex}{\out{\hypertarget{method-plot_pairs}{}}}
+\subsection{Method \code{plot_pairs()}}{
+Plot pairs of inputs and outputs.
+Helps see correlations and distributions.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ffexp$plot_pairs()}\if{html}{\out{</div>}}
+}
+
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-plot"></a>}}
+\if{latex}{\out{\hypertarget{method-plot}{}}}
+\subsection{Method \code{plot()}}{
+Calling `plot` on an `ffexp` object calls `plot_pairs()`
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ffexp$plot()}\if{html}{\out{</div>}}
+}
+
+}
+\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-calculate_effects"></a>}}
 \if{latex}{\out{\hypertarget{method-calculate_effects}{}}}
 \subsection{Method \code{calculate_effects()}}{
@@ -354,14 +550,33 @@ was an experiment using a linear model.
 
 }
 \if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-calculate_effects2"></a>}}
+\if{latex}{\out{\hypertarget{method-calculate_effects2}{}}}
+\subsection{Method \code{calculate_effects2()}}{
+Calculate the effects of each variable as if this
+was an experiment using a linear model.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ffexp$calculate_effects2()}\if{html}{\out{</div>}}
+}
+
+}
+\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-save_self"></a>}}
 \if{latex}{\out{\hypertarget{method-save_self}{}}}
 \subsection{Method \code{save_self()}}{
 Save this R6 object
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{ffexp$save_self()}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{ffexp$save_self(verbose = self$verbose)}\if{html}{\out{</div>}}
 }
 
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{verbose}}{How much should be printed when running. 0 is none,
+2 is average.}
+}
+\if{html}{\out{</div>}}
+}
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-create_save_folder_if_nonexistent"></a>}}
@@ -374,15 +589,44 @@ Create the save folder if it doesn't already exist.
 
 }
 \if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-rename_save_folder"></a>}}
+\if{latex}{\out{\hypertarget{method-rename_save_folder}{}}}
+\subsection{Method \code{rename_save_folder()}}{
+Rename the save folder
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ffexp$rename_save_folder(new_folder_path, new_folder_name)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{new_folder_path}}{New path for the save folder}
+
+\item{\code{new_folder_name}}{If you want the new save folder to be in the
+current directory, you can use this instead of `new_folder_path` and
+just give the folder name.}
+}
+\if{html}{\out{</div>}}
+}
+}
+\if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-delete_save_folder_if_empty"></a>}}
 \if{latex}{\out{\hypertarget{method-delete_save_folder_if_empty}{}}}
 \subsection{Method \code{delete_save_folder_if_empty()}}{
 Delete the save folder if it is empty.
 Used to prevent leaving behind empty folders.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{ffexp$delete_save_folder_if_empty()}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{ffexp$delete_save_folder_if_empty(verbose = self$verbose)}\if{html}{\out{</div>}}
 }
 
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{verbose}}{How much should be printed when running. 0 is none,
+2 is average.}
+}
+\if{html}{\out{</div>}}
+}
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-recover_parallel_temp_save"></a>}}
@@ -393,7 +637,7 @@ if `save_parallel_temp_save=TRUE` was used when running.
 Useful when running long jobs in parallel so that you don't
 lose all results if it crashes before finishing.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{ffexp$recover_parallel_temp_save(delete_after = TRUE)}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{ffexp$recover_parallel_temp_save(delete_after = FALSE, only_reload_new = FALSE)}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
@@ -403,6 +647,10 @@ lose all results if it crashes before finishing.
 are recovered? If TRUE, make sure you save the ffexp object after
 running this function so
 you don't lose the data.}
+
+\item{\code{only_reload_new}}{Will only reload output from runs that don't show as
+completed yet. Can make it much faster if there are many saved files, but
+most have already been loaded to this object.}
 }
 \if{html}{\out{</div>}}
 }
@@ -489,6 +737,29 @@ summary information.
 \if{html}{\out{<div class="r">}}\preformatted{ffexp$print()}\if{html}{\out{</div>}}
 }
 
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-set_parallel_cores"></a>}}
+\if{latex}{\out{\hypertarget{method-set_parallel_cores}{}}}
+\subsection{Method \code{set_parallel_cores()}}{
+Set the number of parallel cores to be used when
+running in parallel. Needed in case user sets "detect"
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{ffexp$set_parallel_cores(parallel_cores)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{parallel_cores}}{When running in parallel, how many cores should
+be used. Not actually the number of cores used, actually the number
+of clusters created. Can be more than the computer has available,
+but will hurt performance. Can set to 'detect' to have it detect
+how many cores are available and use that, or 'detect-1' to use
+one fewer than there are.}
+}
+\if{html}{\out{</div>}}
+}
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-stop_cluster"></a>}}

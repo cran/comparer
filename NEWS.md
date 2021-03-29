@@ -1,6 +1,15 @@
+# comparer 0.2.2
+
+* Minor fixes for ffexp to improve reliability.
+
+* Major speedup for fast trials when not run in parallel.
+
 # comparer 0.2.1
 
-* Was taken off of CRAN for unknown failures. Putting back up.
+* Was taken off of CRAN for error when running in parallel on non-Windows
+systems. Fixed that and a few other minor things.
+
+* Accepted to CRAN on 3/25/20.
 
 # comparer 0.2.0
 
