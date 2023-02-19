@@ -90,6 +90,10 @@ NULL
 #' @field folder_path The path to the folder where output will be saved.
 #' @field verbose How much should be printed when running. 0 is none,
 #' 2 is average.
+#' @field extract_output_to_df A function to extract the raw output into
+#' a data frame. E.g., if the output is a list, but you want a single
+#' item to show up in the output data frame.
+#' @field hashvalue A value used to make sure inputs match when reloading.
 ffexp <- R6::R6Class(
   classname = "ffexp",
   public = list(
@@ -103,6 +107,7 @@ ffexp <- R6::R6Class(
     allvars = NULL, # df with name, class, and num levels for each var
     varlist = NULL, # List of variable names to pass through to parallel
     arglist = NULL, # List of values for each argument
+    hashvalue = NULL, # Hash value of arglist
     number_runs = NULL,
     completed_runs = NULL, # Logical vector of whether each run is done
     eval_func = NULL,
@@ -112,6 +117,7 @@ ffexp <- R6::R6Class(
     parallel_cores = NULL,
     parallel_cluster = NULL,
     folder_path = NULL,
+    extract_output_to_df = NULL,
     verbose = 2,
     #' @description Create an `ffexp` object.
     #' @param ... Input arguments for the experiment
@@ -131,9 +137,14 @@ ffexp <- R6::R6Class(
     #' passed to the parallel environment.
     #' @param verbose How much should be printed when running. 0 is none,
     #' 2 is average.
+    #' @param extract_output_to_df A function to extract the raw output into
+    #' a data frame. E.g., if the output is a list, but you want a single
+    #' item to show up in the output data frame.
     initialize = function(..., eval_func, save_output=FALSE, parallel=FALSE,
                           parallel_cores="detect", folder_path,
-                          varlist=NULL, verbose=2) {
+                          varlist=NULL, verbose=2,
+                          extract_output_to_df=NULL
+    ) {
       self$eval_func <- eval_func
       self$save_output <- save_output
       self$folder_path <- if (missing(folder_path)) {
@@ -142,10 +153,13 @@ ffexp <- R6::R6Class(
       else {folder_path}
       self$varlist <- varlist
       self$arglist <- list(...)
+      # Create a hash value to check later to make sure inputs are the same,
+      #   especially when reloading saved parallel temp files.
+      self$hashvalue <- digest::digest(self$arglist)
+      self$extract_output_to_df <- extract_output_to_df
       # # Getting an error with df with ncol==1, so just avoid that
       # for (i in 1:length(self$arglist)) {
       #   if ("data.frame" %in% class(self$arglist[[i]]) && ncol(self$arglist[[i]])==1) {
-      #     # browser()
       #     tmpname <- colnames(self$arglist[[i]]); stopifnot(length(tmpname) == 1);
       #     self$arglist[[i]] <- self$arglist[[i]][,1]
       #     names(self$arglist)[[i]] <- tmpname
@@ -166,7 +180,7 @@ ffexp <- R6::R6Class(
                               lapply(1:length(self$arglist),
                                      function(j) {
                                        i <- self$arglist[[j]]
-                                       if (is.data.frame(i)) {#browser()
+                                       if (is.data.frame(i)) {
                                          data.frame(name =colnames(i),
                                                     class=unlist(lapply(i, class)),
                                                     num  =nrow(i))
@@ -333,7 +347,6 @@ ffexp <- R6::R6Class(
           cat("Running...")
         }
         # cat("\tCluster is"); print(self$parallel_cluster)
-        # browser()
         parout <- parallel::clusterApplyLB(
           cl=self$parallel_cluster,
           x=to_run,
@@ -342,6 +355,8 @@ ffexp <- R6::R6Class(
                                  write_start_files=write_start_files,
                                  write_error_files=write_error_files,
                                  verbose=verbose)
+            # Add has value so it can be checked on reload
+            tout$hashvalue <- self$hashvalue
             if (parallel_temp_save) {
               saveRDS(object=tout,
                       file=paste0(self$folder_path,
@@ -367,18 +382,23 @@ ffexp <- R6::R6Class(
           self$delete_save_folder_if_empty(verbose=0)
         }
       } else { # Not parallel
-        # if (exists('dbro') && dbro) {browser()}
         runs_with_error <- integer()
+        show_progress <- TRUE
+        pbar <- progress::progress_bar$new(
+          format=paste0("Running [:bar] :current/:total (:percent) ETA: :eta"),
+          total = length(to_run))
         for (ii in to_run) {
+          pbar$tick()
           try_one <- try({
             tout <- self$run_one(ii, write_start_files=write_start_files,
                                  write_error_files=write_error_files,
                                  warn_repeat=warn_repeat,
                                  save_output=save_output,
-                                 verbose=verbose,
+                                 verbose=0,
                                  return_list_result_of_one=T)
             # tout is only the right thing to save if is_parallel=T
             # in run_one, this shouldn't work
+            tout$hashvalue <- self$hashvalue
             if (parallel_temp_save) {
               self$create_save_folder_if_nonexistent()
               saveRDS(object=tout,
@@ -391,8 +411,8 @@ ffexp <- R6::R6Class(
             runs_with_error <- c(runs_with_error, ii)
           }
         }
+        pbar$terminate()
         if (length(runs_with_error) > 0) {
-          # browser()
           if (verbose >= 1) {
             cat('Errors in run_all with runs:', runs_with_error, '\n')
           }
@@ -546,7 +566,6 @@ ffexp <- R6::R6Class(
                               varlist=self$varlist,
                               verbose=self$verbose,
                               warn_repeat=TRUE) {
-      # browser()
       to_run <- which(!self$completed_runs)
       if (length(to_run) == 0) {return(invisible(self))}
       to_run <- to_run[sample(1:length(to_run))]
@@ -591,13 +610,16 @@ ffexp <- R6::R6Class(
     #' this one be return?
     #' @param verbose How much should be printed when running. 0 is none,
     #' 2 is average.
+    #' @param force_this_as_output Value to use instead of evaluating
+    #' function.
     run_one = function(irow=NULL, save_output=self$save_output,
                        write_start_files=save_output,
                        write_error_files=save_output,
                        warn_repeat=TRUE,
                        is_parallel=FALSE,
                        return_list_result_of_one=FALSE,
-                       verbose=self$verbose) {
+                       verbose=self$verbose,
+                       force_this_as_output) {
       # Set up single row to run
       if (is.null(irow)) { # If irow not given, set to next not run
         if (any(self$completed_runs == FALSE)) {
@@ -626,9 +648,8 @@ ffexp <- R6::R6Class(
       # Can't just set row_list <- lapply since a function can't be named
       #  so to get names there we need to handle functions separately.
       row_list <- list()
-      # browser()
       lapply(1:ncol(self$nvars),
-             function(i) {#browser()
+             function(i) {
                ar <- self$arglist[[i]]
                if (is.data.frame(ar)) {
                  # FIX1COLDF added drop=FALSE
@@ -668,7 +689,7 @@ ffexp <- R6::R6Class(
 
       # Get df for output row, must be number of string, no functions
       row_df_list <- lapply(1:ncol(self$nvars),
-                            function(i) {#browser()
+                            function(i) {
                               ar <- self$arglist[[i]]
                               if (is.data.frame(ar)) {
                                 tr <- as.list(ar[row_grid[1,i, drop=TRUE], , drop=FALSE])
@@ -691,14 +712,12 @@ ffexp <- R6::R6Class(
                               tr
                             })
       # Need to get list of lists out into single list
-      # browser()
       # This didn't work because it would convert numeric to char
       # row_df <- as.list(unlist(row_df_list, recursive = FALSE))
       # Instead do this. Hopefully it works. Didn't work.
       # row_df <- lapply(row_df_list, function(x){x[[1]]})
       # names(row_df) <- sapply(row_df_list, function(x){names(x)})
       # Maybe just this?
-      # browser()
       row_df <- do.call(c,
                         lapply(row_df_list, function(lst) {if (is.list(lst)) {lst} else {as.list(lst)}}))
 
@@ -722,11 +741,21 @@ ffexp <- R6::R6Class(
       }
 
       # Run and time it
-      try.run <- try({
-        start_time <- Sys.time()
-        systime <- system.time(output <- do.call(self$eval_func, row_list), gcFirst = FALSE)
-        end_time <- Sys.time()
-      }, silent=verbose<1)
+      if (missing(force_this_as_output)) {
+        try.run <- try({
+          start_time <- Sys.time()
+          systime <- system.time(output <- do.call(self$eval_func, row_list), gcFirst = FALSE)
+          end_time <- Sys.time()
+        }, silent=verbose<1)
+      } else {
+        # If user already knows value, this skips running it.
+        # Useful for adding in results from previous experiments.
+        try.run <- try({
+          start_time <- Sys.time()
+          systime <- system.time(output <- force_this_as_output, gcFirst = FALSE)
+          end_time <- Sys.time()
+        }, silent=verbose<1)
+      }
 
       # Delete write start file
       if (write_start_files && file.exists(write_start_file_path)) {
@@ -797,10 +826,10 @@ ffexp <- R6::R6Class(
     #' @param start_time The start time of the experiment.
     #' @param end_time The end time of the experiment.
     #' @param save_output Should the output be saved?
+    #' @param hashvalue Not used.
     add_result_of_one = function(output, systime, irow, row_grid, row_df,
-                                 start_time, end_time, save_output) {
+                                 start_time, end_time, save_output, hashvalue) {
       # This is used to save results after running an item
-      # browser()
       # stopifnot(is.data.frame(row_df))
       # Save entire output as list
       self$outlist[[irow]] <- output
@@ -822,11 +851,25 @@ ffexp <- R6::R6Class(
         # }
         newdf0 <- data.frame(t(output), stringsAsFactors=FALSE)
         newdf0$runtime <- systime[3]
-      } else {
-        newdf0 <- data.frame(runtime=systime[3])
-        # newdf0 <- data.frame()
-        # newdf0$start_time <- start_time
-        # newdf0$end_time <- end_time
+      } else { # Lists or other objects
+        if (!is.null(self$extract_output_to_df)) {
+          out_as_df <- self$extract_output_to_df(output)
+          if (is.vector(out_as_df)) {
+            out_as_df <- as.data.frame(out_as_df)
+          }
+          if (is.data.frame(out_as_df)) {
+            newdf0 <- out_as_df
+            newdf0$runtime <- systime[3]
+          } else { # Only keep run time
+            newdf0 <- data.frame(runtime=systime[3])
+          }
+
+        } else {
+          newdf0 <- data.frame(runtime=systime[3])
+          # newdf0 <- data.frame()
+          # newdf0$start_time <- start_time
+          # newdf0$end_time <- end_time
+        }
       }
       # newdf0$runtime <- systime[3]
       newdf0$start_time <- start_time
@@ -890,6 +933,7 @@ ffexp <- R6::R6Class(
                       file=paste0(self$folder_path,"/data_cat.csv"),
                       append=T, sep=",", col.names=F)
         } else { #create file
+          self$create_save_folder_if_nonexistent()
           write.table(x=newdf1,
                       file=paste0(self$folder_path,"/data_cat.csv"),
                       append=F, sep=",", col.names=T)
@@ -921,6 +965,9 @@ ffexp <- R6::R6Class(
     #' @description Calculate the effects of each variable as if this
     #' was an experiment using a linear model.
     calculate_effects = function() {
+      if (nrow(self$outrawdf) == 0) {
+        stop("Must run the experiment before evaluating, use $run_all()")
+      }
       nvar <- ncol(self$rungrid)
       sapply(1:nvar,
              function(i) {
@@ -937,7 +984,7 @@ ffexp <- R6::R6Class(
                  tdf[,1] <- self$arglist[[i]][tdf[,1]]
                }
                nlev <- nrow(tdf)
-               if (nlev > 1) {
+               if (nlev > 1 && nlev <= 5) {
                  for (j in (2:nlev)) {
                    for (k in 1:(j-1)) {
                      # newdf <- data.frame(diffname=paste0(tdf[j,1],"-",
@@ -964,6 +1011,9 @@ ffexp <- R6::R6Class(
     #' @description Calculate the effects of each variable as if this
     #' was an experiment using a linear model.
     calculate_effects2 = function() {
+      if (nrow(self$outrawdf) == 0) {
+        stop("Must run the experiment before evaluating, use $run_all()")
+      }
       nvar <- ncol(self$rungrid)
       outputcols <- (nvar+1):(ncol(self$outrawdf)-3)
       sapply(1:nvar,
@@ -984,7 +1034,6 @@ ffexp <- R6::R6Class(
 
                # nlev <- nrow(tdf)
                # if (nlev > 1) {
-               #   browser()
                #   for (j in (2:nlev)) {
                #     for (k in 1:(j-1)) {
                #       # newdf <- data.frame(diffname=paste0(tdf[j,1],"-",
@@ -1043,7 +1092,6 @@ ffexp <- R6::R6Class(
         new_folder_path <- paste0(getwd(), "//", new_folder_name)
       }
       # return()
-      # browser()
       # Check if that folder exists
       if (dir.exists(new_folder_path)) {
         stop(paste("Folder already exists"))
@@ -1079,7 +1127,7 @@ ffexp <- R6::R6Class(
                             all.files = TRUE, no.. = TRUE)) == 0) {
         unlink(self$folder_path, recursive = TRUE)
       } else {
-        if (self$verbose >= 1) {
+        if (verbose >= 1) {
           message("Folder is not empty")
         }
       }
@@ -1098,8 +1146,13 @@ ffexp <- R6::R6Class(
     #' most have already been loaded to this object.
     recover_parallel_temp_save = function(delete_after=FALSE, only_reload_new=FALSE) {
       # Read in and save
+      identical_row_grid_warning_given <- FALSE
+      hashvalue_warning_given <- FALSE
+      num_recovered <- 0
       # Progress bar
-      pb <- progress::progress_bar$new(total=nrow(self$rungrid))
+      pb <- progress::progress_bar$new(
+        format="  Reloading files (:spin) [:bar] :percent :current / :total",
+        total=nrow(self$rungrid))
       pb$tick(0)
       for (ii in 1:nrow(self$rungrid)) {
         # Check for file
@@ -1107,15 +1160,37 @@ ffexp <- R6::R6Class(
         if (file.exists(file_ii) && !(only_reload_new && self$completed_runs[ii])) {
           # Read in
           oneout <- readRDS(file=file_ii)
+          # Check to see that it matches what is expected
+          if (!identical(self$rungrid[ii,,drop=F], oneout$row_grid)) {
+            if (!identical_row_grid_warning_given) {
+              warning(paste0("Inputs of what is being reloaded doesn't match",
+                             " inputs of current object. Did you change the inputs?",
+                             " If yes, you should rerun, not recover the saved files."))
+              identical_row_grid_warning_given <- TRUE
+            }
+          }
+          # Check hash value
+          if (!is.null(self$hashvalue) && !is.null(oneout$hashvalue) &&
+              self$hashvalue != oneout$hashvalue) {
+            if (!hashvalue_warning_given) {
+              warning(paste0("Hash value of what is being reloaded doesn't match",
+                             " inputs of current object. Did you change the inputs?",
+                             " If yes, you should rerun, not recover the saved files."))
+              hashvalue_warning_given <- TRUE
+            }
+          }
+          # Remove hash value?
           do.call(self$add_result_of_one, oneout)
           # Delete it
           if (delete_after) {
             unlink(file_ii)
           }
+          num_recovered <- num_recovered + 1
         }
         pb$tick()
       }
       self$delete_save_folder_if_empty(verbose=0)
+      cat(paste0("Recovered ", num_recovered, " / ", length(self$completed_runs), "\n"))
     },
     #' @description Display the input rows of the experiment.
     #' rungrid just gives integers, this gives the actual values.
@@ -1133,7 +1208,6 @@ ffexp <- R6::R6Class(
           row_grid <- self$rungrid[iirow, , drop=FALSE]
           row_list <- lapply(1:ncol(self$nvars),
                              function(i) {
-                               # browser()
                                ar <- self$arglist[[i]]
                                if (is.data.frame(ar)) {
                                  tr <- as.list(ar[row_grid[1,i, drop=TRUE], , drop=FALSE])
@@ -1302,7 +1376,6 @@ ffexp <- R6::R6Class(
       # Copy over data, leaving space for new runs.
       existing_indexes <- which(
         new_exp$rungrid[,arg_name] %in% existing_level_indexes)
-      # browser()
       # Need to add rows to outcleandf, and copy over existing outcleandf
       nrowsperindex <- nrow(self$outcleandf) / self$number_runs
       new_exp$outcleandf <- new_exp$outcleandf[nrow(new_exp$outcleandf) +
@@ -1330,7 +1403,6 @@ ffexp <- R6::R6Class(
         # Needed in order to run add_level twice in a row without having run it
         new_exp$outlist[[new_index]] <- list(NULL)
       }
-      # browser("outcleandf")
       # new_exp$outcleandf
       # Notify user that it wasn't changed in place
       if (!suppressMessage) {
@@ -1338,27 +1410,47 @@ ffexp <- R6::R6Class(
       }
       return(new_exp)
     },
+    #' @description Remove results of completed trials. They will be rerun
+    #' next time $run_all() is called.
+    #' @param to_remove Indexes of trials to remove
+    remove_results = function(to_remove) {
+      if (missing(to_remove)) {
+        stop("Must give in to_remove to $remove_results()")
+      }
+      self$completed_runs[to_remove] <- FALSE
+      # outlist: don't set to NULL since it moves others up
+      # outrawdf:
+      # outcleandf:
+      invisible(self)
+    },
     #' @description Printing the object shows some
     #' summary information.
     print = function() {
-      s <- paste0(
-        c(
-          "ffexp object from the comparer package\n",
-          "   ", sum(self$completed_runs), " / ",
-          length(self$completed_runs), " completed",
-          if (sum(self$completed_runs) > 0 && sum(!self$completed_runs) > 0) {
-            paste0("  (est. time remaining: ",
-                   round(mean(self$outcleandf$runtime[self$completed_runs]) *
-                           sum(!self$completed_runs), 2), " sec.)\n")
-          } else {'\n'},
-          "   parallel : ", self$parallel,
-          if (self$parallel) {c(' (', self$parallel_cores, ' cores)')}
-          else {''},
-          "\n",
-          "   Use $run_all() to run all remaining\n",
-          "   Use $run_one() to run a single\n"
-        )
+      s <- c(
+        "ffexp object from the comparer package\n",
+        "   ", sum(self$completed_runs), " / ",
+        length(self$completed_runs), " completed",
+        if (sum(self$completed_runs) > 0 && sum(!self$completed_runs) > 0) {
+          paste0("  (est. time remaining: ",
+                 round(mean(self$outcleandf$runtime[self$completed_runs]) *
+                         sum(!self$completed_runs), 2), " sec.)\n")
+        } else {'\n'},
+        "   parallel : ", self$parallel,
+        if (self$parallel) {c(' (', self$parallel_cores, ' cores)')}
+        else {''},
+        "\n"
       )
+      # If still trials left, tell how they can be run
+      if (sum(!self$completed_runs) > 0) {
+        s <- c(s,
+               "   Use $run_all() to run all remaining\n",
+               "   Use $run_one() to run a single\n"
+        )
+      } else {
+        s <- c(s,
+               "   Use $outcleandf to get all output data\n"
+        )
+      }
       cat(s, sep="")
     },
     #' @description Set the number of parallel cores to be used when

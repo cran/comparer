@@ -1,8 +1,16 @@
+# comparer 0.2.3
+
+* Added `hype()` for hyperparameter optimization.
+
+* Was removed from CRAN on 1/17/23 due to unresolved error.
+
 # comparer 0.2.2
 
 * Minor fixes for ffexp to improve reliability.
 
 * Major speedup for fast trials when not run in parallel.
+
+* Accepted to CRAN on 3/29/21.
 
 # comparer 0.2.1
 
