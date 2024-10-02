@@ -12,7 +12,7 @@
 
 <meta name="author" content="Collin Erickson" />
 
-<meta name="date" content="2023-02-18" />
+<meta name="date" content="2024-09-29" />
 
 <title>Introduction to the comparer R package</title>
 
@@ -51,7 +51,7 @@ overflow: visible;
 </style>
 <style type="text/css" data-origin="pandoc">
 pre > code.sourceCode { white-space: pre; position: relative; }
-pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span { line-height: 1.25; }
 pre > code.sourceCode > span:empty { height: 1.2em; }
 .sourceCode { overflow: visible; }
 code.sourceCode > span { color: inherit; text-decoration: inherit; }
@@ -150,6 +150,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; }
 div.csl-bib-body { }
 div.csl-entry {
 clear: both;
+margin-bottom: 0em;
 }
 .hanging div.csl-entry {
 margin-left:2em;
@@ -362,7 +363,7 @@ code > span.er { color: #a61717; background-color: #e3d2d2; }
 
 <h1 class="title toc-ignore">Introduction to the comparer R package</h1>
 <h4 class="author">Collin Erickson</h4>
-<h4 class="date">2023-02-18</h4>
+<h4 class="date">2024-09-29</h4>
 
 
 
@@ -387,16 +388,16 @@ judge the results.</p></li>
 eponymous function. It makes it simple to run different segments of code
 and see which is faster. Borrowing an example from <a href="http://adv-r.had.co.nz/Performance.html" class="uri">http://adv-r.had.co.nz/Performance.html</a>, the following
 shows how it gives a summary of how fast each ran.</p>
-<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">requireNamespace</span>(<span class="st">&quot;microbenchmark&quot;</span>, <span class="at">quietly =</span> <span class="cn">TRUE</span>)) {</span>
-<span id="cb1-2"><a href="#cb1-2" aria-hidden="true" tabindex="-1"></a>  x <span class="ot">&lt;-</span> <span class="fu">runif</span>(<span class="dv">100</span>)</span>
-<span id="cb1-3"><a href="#cb1-3" aria-hidden="true" tabindex="-1"></a>  microbenchmark<span class="sc">::</span><span class="fu">microbenchmark</span>(<span class="fu">sqrt</span>(x), x <span class="sc">^</span> .<span class="dv">5</span>)</span>
-<span id="cb1-4"><a href="#cb1-4" aria-hidden="true" tabindex="-1"></a>} <span class="cf">else</span> {</span>
-<span id="cb1-5"><a href="#cb1-5" aria-hidden="true" tabindex="-1"></a>  <span class="st">&quot;microbenchmark not available on your computer&quot;</span></span>
-<span id="cb1-6"><a href="#cb1-6" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div>
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="cf">if</span> (<span class="fu">requireNamespace</span>(<span class="st">&quot;microbenchmark&quot;</span>, <span class="at">quietly =</span> <span class="cn">TRUE</span>)) {</span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a>  x <span class="ot">&lt;-</span> <span class="fu">runif</span>(<span class="dv">100</span>)</span>
+<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a>  microbenchmark<span class="sc">::</span><span class="fu">microbenchmark</span>(<span class="fu">sqrt</span>(x), x <span class="sc">^</span> .<span class="dv">5</span>)</span>
+<span id="cb1-4"><a href="#cb1-4" tabindex="-1"></a>} <span class="cf">else</span> {</span>
+<span id="cb1-5"><a href="#cb1-5" tabindex="-1"></a>  <span class="st">&quot;microbenchmark not available on your computer&quot;</span></span>
+<span id="cb1-6"><a href="#cb1-6" tabindex="-1"></a>}</span></code></pre></div>
 <pre><code>## Unit: nanoseconds
 ##     expr  min   lq mean median   uq   max neval
-##  sqrt(x)  300  300  403    300  350  3100   100
-##    x^0.5 2500 2600 2902   2600 2700 13500   100</code></pre>
+##  sqrt(x)  200  300  658    300  400 11900   100
+##    x^0.5 2300 2500 3025   2600 2700 17100   100</code></pre>
 <p>However it gives no summary of the output. For this example it is
 fine since the output is deterministic, but when working with randomness
 or model predictions we want to have some sort of summary or evaluation
@@ -412,15 +413,44 @@ desired in addition to the run time.</p>
 estimate of the mean of a random sample. The following shows the results
 of finding the mean of 10 and 100 samples from a normal
 distribution.</p>
-<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(comparer)</span>
-<span id="cb3-2"><a href="#cb3-2" aria-hidden="true" tabindex="-1"></a><span class="fu">mbc</span>(<span class="fu">mean</span>(<span class="fu">rnorm</span>(<span class="dv">10</span>)), <span class="fu">mean</span>(<span class="fu">rnorm</span>(<span class="dv">100</span>)))</span></code></pre></div>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a><span class="fu">library</span>(comparer)</span></code></pre></div>
+<pre><code>## Loading required package: GauPro</code></pre>
+<pre><code>## Loading required package: mixopt</code></pre>
+<pre><code>## Loading required package: dplyr</code></pre>
+<pre><code>## 
+## Attaching package: &#39;dplyr&#39;</code></pre>
+<pre><code>## The following objects are masked from &#39;package:stats&#39;:
+## 
+##     filter, lag</code></pre>
+<pre><code>## The following objects are masked from &#39;package:base&#39;:
+## 
+##     intersect, setdiff, setequal, union</code></pre>
+<pre><code>## Loading required package: ggplot2</code></pre>
+<pre><code>## Loading required package: splitfngr</code></pre>
+<pre><code>## Loading required package: numDeriv</code></pre>
+<pre><code>## Loading required package: rmarkdown</code></pre>
+<pre><code>## Loading required package: tidyr</code></pre>
+<pre><code>## Loading required package: plyr</code></pre>
+<pre><code>## ------------------------------------------------------------------------------</code></pre>
+<pre><code>## You have loaded plyr after dplyr - this is likely to cause problems.
+## If you need functions from both plyr and dplyr, please load plyr first, then dplyr:
+## library(plyr); library(dplyr)</code></pre>
+<pre><code>## ------------------------------------------------------------------------------</code></pre>
+<pre><code>## 
+## Attaching package: &#39;plyr&#39;</code></pre>
+<pre><code>## The following objects are masked from &#39;package:dplyr&#39;:
+## 
+##     arrange, count, desc, failwith, id, mutate, rename, summarise,
+##     summarize</code></pre>
+<pre><code>## Loading required package: progress</code></pre>
+<div class="sourceCode" id="cb22"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" tabindex="-1"></a><span class="fu">mbc</span>(<span class="fu">mean</span>(<span class="fu">rnorm</span>(<span class="dv">10</span>)), <span class="fu">mean</span>(<span class="fu">rnorm</span>(<span class="dv">100</span>)))</span></code></pre></div>
 <pre><code>## Run times (sec)
 ##           Function        Sort1        Sort2        Sort3        Sort4
-## 1  mean(rnorm(10)) 6.914139e-06 6.914139e-06 7.152557e-06 9.059906e-06
-## 2 mean(rnorm(100)) 9.775162e-06 1.001358e-05 1.096725e-05 1.096725e-05
-##          Sort5         mean           sd neval
-## 1 4.601479e-05 1.521111e-05 1.724328e-05     5
-## 2 1.502037e-05 1.134872e-05 2.123130e-06     5
+## 1  mean(rnorm(10)) 6.914139e-06 7.152557e-06 7.152557e-06 1.096725e-05
+## 2 mean(rnorm(100)) 9.059906e-06 9.775162e-06 1.001358e-05 1.001358e-05
+##          Sort5        mean           sd neval
+## 1 7.970333e-04 1.65844e-04 3.528496e-04     5
+## 2 2.121925e-05 1.20163e-05 5.159435e-06     5
 ## 
 ## Output summary
 ##               Func Stat      Sort1        Sort2       Sort3      Sort4
@@ -442,14 +472,14 @@ and the second column shows which output statistic is given. Since there
 is only one output for this code it is called “1”.</p>
 <p>Setting <code>times</code> changes the number of trials run. Below
 the same example as above is run but for 100 trials.</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mbc</span>(<span class="fu">mean</span>(<span class="fu">rnorm</span>(<span class="dv">10</span>)), <span class="fu">mean</span>(<span class="fu">rnorm</span>(<span class="dv">100</span>)), <span class="at">times=</span><span class="dv">100</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb24"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" tabindex="-1"></a><span class="fu">mbc</span>(<span class="fu">mean</span>(<span class="fu">rnorm</span>(<span class="dv">10</span>)), <span class="fu">mean</span>(<span class="fu">rnorm</span>(<span class="dv">100</span>)), <span class="at">times=</span><span class="dv">100</span>)</span></code></pre></div>
 <pre><code>## Run times (sec)
 ##           Function         Min.      1st Qu.       Median         Mean
-## 1  mean(rnorm(10)) 5.960464e-06 6.914139e-06 6.914139e-06 7.331371e-06
-## 2 mean(rnorm(100)) 8.821487e-06 9.059906e-06 1.001358e-05 1.038313e-05
+## 1  mean(rnorm(10)) 5.960464e-06 5.960464e-06 6.914139e-06 6.821156e-06
+## 2 mean(rnorm(100)) 8.821487e-06 9.059906e-06 9.059906e-06 9.701252e-06
 ##        3rd Qu.         Max.           sd neval
-## 1 7.152557e-06 2.002716e-05 1.897502e-06   100
-## 2 1.001358e-05 2.002716e-05 2.079141e-06   100
+## 1 6.914139e-06 1.907349e-05 1.354602e-06   100
+## 2 1.001358e-05 2.098083e-05 1.495924e-06   100
 ## 
 ## Output summary
 ##               Func Stat       Min.     1st Qu.       Median        Mean
@@ -474,14 +504,14 @@ and then the code will be evaluated in an environment with that data. In
 this example we compare the functions <code>mean</code> and
 <code>median</code> on random data from an exponential distribution. The
 mean should be about 1, while the median should be about <span class="math inline">\(\ln(2)=0.693\)</span>.</p>
-<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mbc</span>(<span class="fu">mean</span>(x), <span class="fu">median</span>(x), <span class="at">input=</span><span class="fu">list</span>(<span class="at">x=</span><span class="fu">rexp</span>(<span class="dv">30</span>)))</span></code></pre></div>
+<div class="sourceCode" id="cb26"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" tabindex="-1"></a><span class="fu">mbc</span>(<span class="fu">mean</span>(x), <span class="fu">median</span>(x), <span class="at">input=</span><span class="fu">list</span>(<span class="at">x=</span><span class="fu">rexp</span>(<span class="dv">30</span>)))</span></code></pre></div>
 <pre><code>## Run times (sec)
 ##    Function        Sort1        Sort2        Sort3        Sort4        Sort5
-## 1   mean(x) 5.960464e-06 5.960464e-06 6.198883e-06 7.867813e-06 2.717972e-05
-## 2 median(x) 2.193451e-05 2.217293e-05 2.503395e-05 2.789497e-05 1.180172e-04
+## 1   mean(x) 5.960464e-06 5.960464e-06 6.914139e-06 9.059906e-06 2.002716e-05
+## 2 median(x) 2.193451e-05 2.312660e-05 2.503395e-05 2.908707e-05 1.621246e-04
 ##           mean           sd neval
-## 1 1.063347e-05 9.283947e-06     5
-## 2 4.301071e-05 4.200012e-05     5
+## 1 9.584427e-06 5.973325e-06     5
+## 2 5.226135e-05 6.147534e-05     5
 ## 
 ## Output summary
 ##        Func Stat     Sort1     Sort2     Sort3     Sort4     Sort5      mean sd
@@ -496,14 +526,14 @@ meaning that each time it will be different.</p>
 with <code>x</code> set in brackets instead of a list. We see there is
 randomness and we can get an idea of the distribution of the median and
 mean.</p>
-<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mbc</span>(<span class="fu">mean</span>(x), <span class="fu">median</span>(x), <span class="at">inputi=</span>{x<span class="ot">=</span><span class="fu">rexp</span>(<span class="dv">30</span>)})</span></code></pre></div>
+<div class="sourceCode" id="cb28"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb28-1"><a href="#cb28-1" tabindex="-1"></a><span class="fu">mbc</span>(<span class="fu">mean</span>(x), <span class="fu">median</span>(x), <span class="at">inputi=</span>{x<span class="ot">=</span><span class="fu">rexp</span>(<span class="dv">30</span>)})</span></code></pre></div>
 <pre><code>## Run times (sec)
 ##    Function        Sort1        Sort2        Sort3        Sort4        Sort5
-## 1   mean(x) 5.006790e-06 5.006790e-06 5.006790e-06 5.960464e-06 1.192093e-05
-## 2 median(x) 2.098083e-05 2.193451e-05 2.408028e-05 3.004074e-05 4.196167e-05
+## 1   mean(x) 5.960464e-06 5.960464e-06 6.914139e-06 1.192093e-05 1.382828e-05
+## 2 median(x) 2.598763e-05 2.694130e-05 2.694130e-05 4.291534e-05 5.197525e-05
 ##           mean           sd neval
-## 1 6.580353e-06 3.013898e-06     5
-## 2 2.779961e-05 8.664802e-06     5
+## 1 8.916855e-06 3.695873e-06     5
+## 2 3.495216e-05 1.185231e-05     5
 ## 
 ## Output summary
 ##        Func Stat        V1       V2       V3        V4        V5      mean
@@ -515,14 +545,14 @@ mean.</p>
 <p>When the code chunks to evaluate are simple functions of a single
 variable, this can be simplified. Look how simple it is to run a test on
 these!</p>
-<div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mbc</span>(mean, median, <span class="at">inputi=</span><span class="fu">rexp</span>(<span class="dv">30</span>))</span></code></pre></div>
+<div class="sourceCode" id="cb30"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb30-1"><a href="#cb30-1" tabindex="-1"></a><span class="fu">mbc</span>(mean, median, <span class="at">inputi=</span><span class="fu">rexp</span>(<span class="dv">30</span>))</span></code></pre></div>
 <pre><code>## Run times (sec)
 ##   Function        Sort1        Sort2        Sort3        Sort4        Sort5
 ## 1     mean 1.907349e-06 2.145767e-06 2.861023e-06 3.099442e-06 4.053116e-06
-## 2   median 1.907349e-06 1.907349e-06 1.907349e-06 2.861023e-06 3.099442e-06
+## 2   median 1.907349e-06 1.907349e-06 2.145767e-06 3.099442e-06 3.099442e-06
 ##           mean           sd neval
 ## 1 2.813339e-06 8.496537e-07     5
-## 2 2.336502e-06 5.936575e-07     5</code></pre>
+## 2 2.431870e-06 6.171312e-07     5</code></pre>
 </div>
 <div id="comparing-to-expected-values" class="section level2">
 <h2>Comparing to expected values</h2>
@@ -545,20 +575,20 @@ also a new section at the bottom title <code>Compare</code>. This
 compares the <code>rmse</code> values from the two methods, and does a
 t-test to see if the difference is significant. However, since there is
 no randomness, it fails to perform the t-test.</p>
-<div class="sourceCode" id="cb13"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb13-1"><a href="#cb13-1" aria-hidden="true" tabindex="-1"></a>n <span class="ot">&lt;-</span> <span class="dv">20</span></span>
-<span id="cb13-2"><a href="#cb13-2" aria-hidden="true" tabindex="-1"></a>x <span class="ot">&lt;-</span> <span class="fu">seq</span>(<span class="dv">0</span>, <span class="dv">1</span>, <span class="at">length.out =</span> n)</span>
-<span id="cb13-3"><a href="#cb13-3" aria-hidden="true" tabindex="-1"></a>y <span class="ot">&lt;-</span> <span class="fl">1.8</span> <span class="sc">*</span> x <span class="sc">-</span> .<span class="dv">6</span></span>
-<span id="cb13-4"><a href="#cb13-4" aria-hidden="true" tabindex="-1"></a>ynoise <span class="ot">&lt;-</span> y <span class="sc">+</span> <span class="fu">rnorm</span>(n, <span class="dv">0</span>, .<span class="dv">2</span>)</span></code></pre></div>
-<div class="sourceCode" id="cb14"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb14-1"><a href="#cb14-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mbc</span>(<span class="fu">predict</span>(<span class="fu">lm</span>(ynoise <span class="sc">~</span> x), <span class="fu">data.frame</span>(x)),</span>
-<span id="cb14-2"><a href="#cb14-2" aria-hidden="true" tabindex="-1"></a>    <span class="fu">predict</span>(<span class="fu">lm</span>(ynoise <span class="sc">~</span> x <span class="sc">-</span> <span class="dv">1</span>), <span class="fu">data.frame</span>(x)),</span>
-<span id="cb14-3"><a href="#cb14-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">target =</span> y)</span></code></pre></div>
+<div class="sourceCode" id="cb32"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb32-1"><a href="#cb32-1" tabindex="-1"></a>n <span class="ot">&lt;-</span> <span class="dv">20</span></span>
+<span id="cb32-2"><a href="#cb32-2" tabindex="-1"></a>x <span class="ot">&lt;-</span> <span class="fu">seq</span>(<span class="dv">0</span>, <span class="dv">1</span>, <span class="at">length.out =</span> n)</span>
+<span id="cb32-3"><a href="#cb32-3" tabindex="-1"></a>y <span class="ot">&lt;-</span> <span class="fl">1.8</span> <span class="sc">*</span> x <span class="sc">-</span> .<span class="dv">6</span></span>
+<span id="cb32-4"><a href="#cb32-4" tabindex="-1"></a>ynoise <span class="ot">&lt;-</span> y <span class="sc">+</span> <span class="fu">rnorm</span>(n, <span class="dv">0</span>, .<span class="dv">2</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb33"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb33-1"><a href="#cb33-1" tabindex="-1"></a><span class="fu">mbc</span>(<span class="fu">predict</span>(<span class="fu">lm</span>(ynoise <span class="sc">~</span> x), <span class="fu">data.frame</span>(x)),</span>
+<span id="cb33-2"><a href="#cb33-2" tabindex="-1"></a>    <span class="fu">predict</span>(<span class="fu">lm</span>(ynoise <span class="sc">~</span> x <span class="sc">-</span> <span class="dv">1</span>), <span class="fu">data.frame</span>(x)),</span>
+<span id="cb33-3"><a href="#cb33-3" tabindex="-1"></a>    <span class="at">target =</span> y)</span></code></pre></div>
 <pre><code>## Run times (sec)
 ##                                     Function        Sort1        Sort2
-## 1     predict(lm(ynoise ~ x), data.frame(x)) 0.0006098747 0.0006330013
-## 2 predict(lm(ynoise ~ x - 1), data.frame(x)) 0.0006179810 0.0006289482
-##          Sort3        Sort4       Sort5         mean           sd neval
-## 1 0.0006659031 0.0026988983 0.003987074 0.0017189503 0.0015510420     5
-## 2 0.0006430149 0.0006768703 0.000759840 0.0006653309 0.0000572906     5
+## 1     predict(lm(ynoise ~ x), data.frame(x)) 0.0006148815 0.0006420612
+## 2 predict(lm(ynoise ~ x - 1), data.frame(x)) 0.0006229877 0.0006349087
+##          Sort3        Sort4        Sort5         mean           sd neval
+## 1 0.0006489754 0.0006699562 0.0040249825 0.0013201714 1.512164e-03     5
+## 2 0.0006380081 0.0006439686 0.0007719994 0.0006623745 6.175718e-05     5
 ## 
 ## Output summary
 ##                                         Func Stat         V1         V2
@@ -578,17 +608,17 @@ no randomness, it fails to perform the t-test.</p>
 the data, so a paired t-test can be computed. It is paired since the
 same <code>ynoise</code> is given to each model. We see that even with
 only a sample size of 5, the p-value is highly significant.</p>
-<div class="sourceCode" id="cb16"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb16-1"><a href="#cb16-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mbc</span>(<span class="fu">predict</span>(<span class="fu">lm</span>(ynoise <span class="sc">~</span> x), <span class="fu">data.frame</span>(x)),</span>
-<span id="cb16-2"><a href="#cb16-2" aria-hidden="true" tabindex="-1"></a>    <span class="fu">predict</span>(<span class="fu">lm</span>(ynoise <span class="sc">~</span> x <span class="sc">-</span> <span class="dv">1</span>), <span class="fu">data.frame</span>(x)),</span>
-<span id="cb16-3"><a href="#cb16-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">inputi=</span>{ynoise <span class="ot">&lt;-</span> y <span class="sc">+</span> <span class="fu">rnorm</span>(n, <span class="dv">0</span>, .<span class="dv">2</span>)},</span>
-<span id="cb16-4"><a href="#cb16-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">target =</span> y)</span></code></pre></div>
+<div class="sourceCode" id="cb35"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb35-1"><a href="#cb35-1" tabindex="-1"></a><span class="fu">mbc</span>(<span class="fu">predict</span>(<span class="fu">lm</span>(ynoise <span class="sc">~</span> x), <span class="fu">data.frame</span>(x)),</span>
+<span id="cb35-2"><a href="#cb35-2" tabindex="-1"></a>    <span class="fu">predict</span>(<span class="fu">lm</span>(ynoise <span class="sc">~</span> x <span class="sc">-</span> <span class="dv">1</span>), <span class="fu">data.frame</span>(x)),</span>
+<span id="cb35-3"><a href="#cb35-3" tabindex="-1"></a>    <span class="at">inputi=</span>{ynoise <span class="ot">&lt;-</span> y <span class="sc">+</span> <span class="fu">rnorm</span>(n, <span class="dv">0</span>, .<span class="dv">2</span>)},</span>
+<span id="cb35-4"><a href="#cb35-4" tabindex="-1"></a>    <span class="at">target =</span> y)</span></code></pre></div>
 <pre><code>## Run times (sec)
 ##                                     Function        Sort1        Sort2
-## 1     predict(lm(ynoise ~ x), data.frame(x)) 0.0006079674 0.0006351471
-## 2 predict(lm(ynoise ~ x - 1), data.frame(x)) 0.0005998611 0.0006129742
-##          Sort3        Sort4        Sort5         mean           sd neval
-## 1 0.0007719994 0.0008111000 0.0008440018 0.0007340431 1.062366e-04     5
-## 2 0.0006330013 0.0006520748 0.0006630421 0.0006321907 2.627888e-05     5
+## 1     predict(lm(ynoise ~ x), data.frame(x)) 0.0006039143 0.0006308556
+## 2 predict(lm(ynoise ~ x - 1), data.frame(x)) 0.0005760193 0.0006251335
+##          Sort3        Sort4        Sort5         mean          sd neval
+## 1 0.0006418228 0.0006690025 0.0009450912 0.0006981373 0.000140010     5
+## 2 0.0006289482 0.0006670952 0.0029590130 0.0010912418 0.001044617     5
 ## 
 ## Output summary
 ##                                         Func Stat         V1         V2
@@ -616,18 +646,18 @@ cases easier. The argument for <code>evaluator</code> should be an
 expression including <code>.</code>, which will be replaced with the
 code chunks provided. The example below rewrites the above comparison
 using <code>evaluator</code>.</p>
-<div class="sourceCode" id="cb18"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb18-1"><a href="#cb18-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mbc</span>(ynoise <span class="sc">~</span> x,</span>
-<span id="cb18-2"><a href="#cb18-2" aria-hidden="true" tabindex="-1"></a>    ynoise <span class="sc">~</span> x <span class="sc">-</span> <span class="dv">1</span>,</span>
-<span id="cb18-3"><a href="#cb18-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">evaluator=</span><span class="fu">predict</span>(<span class="fu">lm</span>(.), <span class="fu">data.frame</span>(x)),</span>
-<span id="cb18-4"><a href="#cb18-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">inputi=</span>{ynoise <span class="ot">&lt;-</span> y <span class="sc">+</span> <span class="fu">rnorm</span>(n, <span class="dv">0</span>, .<span class="dv">2</span>)},</span>
-<span id="cb18-5"><a href="#cb18-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">target =</span> y)</span></code></pre></div>
+<div class="sourceCode" id="cb37"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb37-1"><a href="#cb37-1" tabindex="-1"></a><span class="fu">mbc</span>(ynoise <span class="sc">~</span> x,</span>
+<span id="cb37-2"><a href="#cb37-2" tabindex="-1"></a>    ynoise <span class="sc">~</span> x <span class="sc">-</span> <span class="dv">1</span>,</span>
+<span id="cb37-3"><a href="#cb37-3" tabindex="-1"></a>    <span class="at">evaluator=</span><span class="fu">predict</span>(<span class="fu">lm</span>(.), <span class="fu">data.frame</span>(x)),</span>
+<span id="cb37-4"><a href="#cb37-4" tabindex="-1"></a>    <span class="at">inputi=</span>{ynoise <span class="ot">&lt;-</span> y <span class="sc">+</span> <span class="fu">rnorm</span>(n, <span class="dv">0</span>, .<span class="dv">2</span>)},</span>
+<span id="cb37-5"><a href="#cb37-5" tabindex="-1"></a>    <span class="at">target =</span> y)</span></code></pre></div>
 <pre><code>## Run times (sec)
 ##         Function        Sort1        Sort2        Sort3        Sort4
-## 1     ynoise ~ x 0.0006010532 0.0006210804 0.0006251335 0.0007081032
-## 2 ynoise ~ x - 1 0.0005929470 0.0006148815 0.0006341934 0.0006358624
+## 1     ynoise ~ x 0.0005779266 0.0005910397 0.0006289482 0.0006480217
+## 2 ynoise ~ x - 1 0.0005629063 0.0005860329 0.0005991459 0.0006051064
 ##          Sort5         mean           sd neval
-## 1 0.0009980202 0.0007106781 0.0001657825     5
-## 2 0.0008840561 0.0006723881 0.0001195974     5
+## 1 0.0011458397 0.0007183552 2.406309e-04     5
+## 2 0.0007331371 0.0006172657 6.676976e-05     5
 ## 
 ## Output summary
 ##             Func Stat         V1         V2         V3         V4         V5
@@ -668,19 +698,19 @@ It has 50 rows, so in each trial <code>ki</code> is a subset of
 that we are repeating the five folds six times. The code chunk fits the
 model, makes predictions on the hold-out data, and calculates the
 RMSE.</p>
-<div class="sourceCode" id="cb20"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb20-1"><a href="#cb20-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mbc</span>({mod <span class="ot">&lt;-</span> <span class="fu">lm</span>(dist <span class="sc">~</span> speed, <span class="at">data=</span>cars[ki,])</span>
-<span id="cb20-2"><a href="#cb20-2" aria-hidden="true" tabindex="-1"></a>     p <span class="ot">&lt;-</span> <span class="fu">predict</span>(mod,cars[<span class="sc">-</span>ki,])</span>
-<span id="cb20-3"><a href="#cb20-3" aria-hidden="true" tabindex="-1"></a>     <span class="fu">sqrt</span>(<span class="fu">mean</span>((p <span class="sc">-</span> cars<span class="sc">$</span>dist[<span class="sc">-</span>ki])<span class="sc">^</span><span class="dv">2</span>))</span>
-<span id="cb20-4"><a href="#cb20-4" aria-hidden="true" tabindex="-1"></a>     },</span>
-<span id="cb20-5"><a href="#cb20-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">kfold=</span><span class="fu">c</span>(<span class="fu">nrow</span>(cars), <span class="dv">5</span>),</span>
-<span id="cb20-6"><a href="#cb20-6" aria-hidden="true" tabindex="-1"></a>    <span class="at">times=</span><span class="dv">30</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb39"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb39-1"><a href="#cb39-1" tabindex="-1"></a><span class="fu">mbc</span>({mod <span class="ot">&lt;-</span> <span class="fu">lm</span>(dist <span class="sc">~</span> speed, <span class="at">data=</span>cars[ki,])</span>
+<span id="cb39-2"><a href="#cb39-2" tabindex="-1"></a>     p <span class="ot">&lt;-</span> <span class="fu">predict</span>(mod,cars[<span class="sc">-</span>ki,])</span>
+<span id="cb39-3"><a href="#cb39-3" tabindex="-1"></a>     <span class="fu">sqrt</span>(<span class="fu">mean</span>((p <span class="sc">-</span> cars<span class="sc">$</span>dist[<span class="sc">-</span>ki])<span class="sc">^</span><span class="dv">2</span>))</span>
+<span id="cb39-4"><a href="#cb39-4" tabindex="-1"></a>     },</span>
+<span id="cb39-5"><a href="#cb39-5" tabindex="-1"></a>    <span class="at">kfold=</span><span class="fu">c</span>(<span class="fu">nrow</span>(cars), <span class="dv">5</span>),</span>
+<span id="cb39-6"><a href="#cb39-6" tabindex="-1"></a>    <span class="at">times=</span><span class="dv">30</span>)</span></code></pre></div>
 <pre><code>## Run times (sec)
 ##                                                                                                           Function
 ## 1 { mod &lt;- lm(dist ~ speed, data = cars[ki, ]) p &lt;- predict(mod, cars[-ki, ]) sqrt(mean((p - cars$dist[-ki])^2)) }
 ##           Min.      1st Qu.       Median         Mean      3rd Qu.        Max.
-## 1 0.0005140305 0.0005369186 0.0005565882 0.0006539424 0.0005950332 0.002490044
-##             sd neval
-## 1 0.0003593938    30
+## 1 0.0005500317 0.0005877614 0.0006076097 0.0006978591 0.0006324649 0.002804041
+##            sd neval
+## 1 0.000403711    30
 ## 
 ## Output summary
 ##                                                                                                               Func
@@ -693,15 +723,15 @@ should be and setting <code>target=&quot;dist&quot;</code> tells it that the
 target is the <code>dist</code> element from <code>targetin</code>. You
 cannot set <code>target=cars$dit[-ki]</code> since <code>target</code>
 cannot be evaluated as an expression.</p>
-<div class="sourceCode" id="cb22"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb22-1"><a href="#cb22-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mbc</span>(<span class="fu">lm</span>(dist <span class="sc">~</span> speed, <span class="at">data=</span>cars[ki,]),</span>
-<span id="cb22-2"><a href="#cb22-2" aria-hidden="true" tabindex="-1"></a>    <span class="at">targetin=</span>cars[<span class="sc">-</span>ki,], <span class="at">target=</span><span class="st">&quot;dist&quot;</span>,</span>
-<span id="cb22-3"><a href="#cb22-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">kfold=</span><span class="fu">c</span>(<span class="fu">nrow</span>(cars), <span class="dv">5</span>),</span>
-<span id="cb22-4"><a href="#cb22-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">times=</span><span class="dv">30</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb41"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb41-1"><a href="#cb41-1" tabindex="-1"></a><span class="fu">mbc</span>(<span class="fu">lm</span>(dist <span class="sc">~</span> speed, <span class="at">data=</span>cars[ki,]),</span>
+<span id="cb41-2"><a href="#cb41-2" tabindex="-1"></a>    <span class="at">targetin=</span>cars[<span class="sc">-</span>ki,], <span class="at">target=</span><span class="st">&quot;dist&quot;</span>,</span>
+<span id="cb41-3"><a href="#cb41-3" tabindex="-1"></a>    <span class="at">kfold=</span><span class="fu">c</span>(<span class="fu">nrow</span>(cars), <span class="dv">5</span>),</span>
+<span id="cb41-4"><a href="#cb41-4" tabindex="-1"></a>    <span class="at">times=</span><span class="dv">30</span>)</span></code></pre></div>
 <pre><code>## Run times (sec)
-##                              Function        Min.     1st Qu.       Median
-## 1 lm(dist ~ speed, data = cars[ki, ]) 0.000305891 0.000320971 0.0003285408
+##                              Function         Min.      1st Qu.       Median
+## 1 lm(dist ~ speed, data = cars[ki, ]) 0.0003139973 0.0003354549 0.0003554821
 ##           Mean      3rd Qu.        Max.           sd neval
-## 1 0.0004182259 0.0003596544 0.002377987 0.0003763332    30
+## 1 0.0003877401 0.0003721118 0.001163006 0.0001516688    30
 ## 
 ## Output summary
 ##                                  Func Stat     Min.  1st Qu.  Median     Mean
@@ -729,16 +759,16 @@ we can calculate a t-score.</p>
 <p><span class="math display">\[ t = \frac{\hat{y} - y}{s} \]</span></p>
 <p>The output then shows the distribution of these t-scores by showing
 the six number summary.</p>
-<div class="sourceCode" id="cb24"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb24-1"><a href="#cb24-1" aria-hidden="true" tabindex="-1"></a><span class="fu">mbc</span>(<span class="fu">lm</span>(dist <span class="sc">~</span> speed, <span class="at">data=</span>cars[ki,]),</span>
-<span id="cb24-2"><a href="#cb24-2" aria-hidden="true" tabindex="-1"></a>    <span class="at">targetin=</span>cars[<span class="sc">-</span>ki,], <span class="at">target=</span><span class="st">&quot;dist&quot;</span>,</span>
-<span id="cb24-3"><a href="#cb24-3" aria-hidden="true" tabindex="-1"></a>    <span class="at">kfold=</span><span class="fu">c</span>(<span class="fu">nrow</span>(cars), <span class="dv">5</span>),</span>
-<span id="cb24-4"><a href="#cb24-4" aria-hidden="true" tabindex="-1"></a>    <span class="at">times=</span><span class="dv">30</span>,</span>
-<span id="cb24-5"><a href="#cb24-5" aria-hidden="true" tabindex="-1"></a>    <span class="at">metric=</span><span class="st">&#39;t&#39;</span>)</span></code></pre></div>
+<div class="sourceCode" id="cb43"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb43-1"><a href="#cb43-1" tabindex="-1"></a><span class="fu">mbc</span>(<span class="fu">lm</span>(dist <span class="sc">~</span> speed, <span class="at">data=</span>cars[ki,]),</span>
+<span id="cb43-2"><a href="#cb43-2" tabindex="-1"></a>    <span class="at">targetin=</span>cars[<span class="sc">-</span>ki,], <span class="at">target=</span><span class="st">&quot;dist&quot;</span>,</span>
+<span id="cb43-3"><a href="#cb43-3" tabindex="-1"></a>    <span class="at">kfold=</span><span class="fu">c</span>(<span class="fu">nrow</span>(cars), <span class="dv">5</span>),</span>
+<span id="cb43-4"><a href="#cb43-4" tabindex="-1"></a>    <span class="at">times=</span><span class="dv">30</span>,</span>
+<span id="cb43-5"><a href="#cb43-5" tabindex="-1"></a>    <span class="at">metric=</span><span class="st">&#39;t&#39;</span>)</span></code></pre></div>
 <pre><code>## Run times (sec)
 ##                              Function         Min.      1st Qu.       Median
-## 1 lm(dist ~ speed, data = cars[ki, ]) 0.0003259182 0.0003378391 0.0003519058
+## 1 lm(dist ~ speed, data = cars[ki, ]) 0.0003368855 0.0003628731 0.0004019737
 ##           Mean      3rd Qu.         Max.           sd neval
-## 1 0.0003821611 0.0003867149 0.0006341934 7.544532e-05    30
+## 1 0.0004223347 0.0004310012 0.0008871555 0.0001087221    30
 ## 
 ## Output summary
 ##                                  Func      Stat        Min.     1st Qu.
@@ -794,32 +824,32 @@ possible values for each input parameter. In the example below,
 these parameters. For example, using <code>eval_func = paste</code> will
 paste together the value of <code>a</code> with the value of
 <code>b</code>.</p>
-<div class="sourceCode" id="cb26"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb26-1"><a href="#cb26-1" aria-hidden="true" tabindex="-1"></a>f1 <span class="ot">&lt;-</span> ffexp<span class="sc">$</span><span class="fu">new</span>(</span>
-<span id="cb26-2"><a href="#cb26-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">a=</span><span class="dv">1</span><span class="sc">:</span><span class="dv">3</span>,</span>
-<span id="cb26-3"><a href="#cb26-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">b=</span><span class="fu">c</span>(<span class="st">&quot;a&quot;</span>,<span class="st">&quot;b&quot;</span>,<span class="st">&quot;c&quot;</span>),</span>
-<span id="cb26-4"><a href="#cb26-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">eval_func=</span>paste</span>
-<span id="cb26-5"><a href="#cb26-5" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div>
+<div class="sourceCode" id="cb45"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb45-1"><a href="#cb45-1" tabindex="-1"></a>f1 <span class="ot">&lt;-</span> ffexp<span class="sc">$</span><span class="fu">new</span>(</span>
+<span id="cb45-2"><a href="#cb45-2" tabindex="-1"></a>  <span class="at">a=</span><span class="dv">1</span><span class="sc">:</span><span class="dv">3</span>,</span>
+<span id="cb45-3"><a href="#cb45-3" tabindex="-1"></a>  <span class="at">b=</span><span class="fu">c</span>(<span class="st">&quot;a&quot;</span>,<span class="st">&quot;b&quot;</span>,<span class="st">&quot;c&quot;</span>),</span>
+<span id="cb45-4"><a href="#cb45-4" tabindex="-1"></a>  <span class="at">eval_func=</span>paste</span>
+<span id="cb45-5"><a href="#cb45-5" tabindex="-1"></a>)</span></code></pre></div>
 <p>After creating the <code>ffexp</code> object, we can call
 <code>f1$run_all</code> to run <code>eval_func</code> on every
 combination of <code>a</code> and <code>b</code>.</p>
-<div class="sourceCode" id="cb27"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb27-1"><a href="#cb27-1" aria-hidden="true" tabindex="-1"></a>f1<span class="sc">$</span><span class="fu">run_all</span>()</span></code></pre></div>
+<div class="sourceCode" id="cb46"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb46-1"><a href="#cb46-1" tabindex="-1"></a>f1<span class="sc">$</span><span class="fu">run_all</span>()</span></code></pre></div>
 <p>Now to see the results in a clean format, look at
 <code>f1$outcleandf</code>.</p>
-<div class="sourceCode" id="cb28"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb28-1"><a href="#cb28-1" aria-hidden="true" tabindex="-1"></a>f1<span class="sc">$</span>outcleandf</span></code></pre></div>
+<div class="sourceCode" id="cb47"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb47-1"><a href="#cb47-1" tabindex="-1"></a>f1<span class="sc">$</span>outcleandf</span></code></pre></div>
 <pre><code>##   a b  V1 runtime          start_time            end_time run_number
-## 1 1 a 1 a       0 2023-02-18 13:22:08 2023-02-18 13:22:08          1
-## 2 2 a 2 a       0 2023-02-18 13:22:08 2023-02-18 13:22:08          2
-## 3 3 a 3 a       0 2023-02-18 13:22:09 2023-02-18 13:22:09          3
-## 4 1 b 1 b       0 2023-02-18 13:22:09 2023-02-18 13:22:09          4
-## 5 2 b 2 b       0 2023-02-18 13:22:09 2023-02-18 13:22:09          5
-## 6 3 b 3 b       0 2023-02-18 13:22:09 2023-02-18 13:22:09          6
-## 7 1 c 1 c       0 2023-02-18 13:22:09 2023-02-18 13:22:09          7
-## 8 2 c 2 c       0 2023-02-18 13:22:09 2023-02-18 13:22:09          8
-## 9 3 c 3 c       0 2023-02-18 13:22:09 2023-02-18 13:22:09          9</code></pre>
+## 1 1 a 1 a       0 2024-09-29 12:53:37 2024-09-29 12:53:37          1
+## 2 2 a 2 a       0 2024-09-29 12:53:37 2024-09-29 12:53:37          2
+## 3 3 a 3 a       0 2024-09-29 12:53:37 2024-09-29 12:53:37          3
+## 4 1 b 1 b       0 2024-09-29 12:53:37 2024-09-29 12:53:37          4
+## 5 2 b 2 b       0 2024-09-29 12:53:37 2024-09-29 12:53:37          5
+## 6 3 b 3 b       0 2024-09-29 12:53:37 2024-09-29 12:53:37          6
+## 7 1 c 1 c       0 2024-09-29 12:53:37 2024-09-29 12:53:37          7
+## 8 2 c 2 c       0 2024-09-29 12:53:37 2024-09-29 12:53:37          8
+## 9 3 c 3 c       0 2024-09-29 12:53:37 2024-09-29 12:53:37          9</code></pre>
 </div>
 <div id="references" class="section level2 unnumbered">
 <h2 class="unnumbered">References</h2>
-<div id="refs" class="references csl-bib-body hanging-indent">
+<div id="refs" class="references csl-bib-body hanging-indent" entry-spacing="0">
 <div id="ref-gneiting" class="csl-entry">
 Gneiting, Tilmann, and Adrian E. Raftery. 2007. <span>“Strictly Proper
 Scoring Rules, Prediction, and Estimation.”</span> <em>Journal of the
